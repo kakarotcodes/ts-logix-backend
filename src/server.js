@@ -15,6 +15,7 @@ app.use(
       "http://localhost:6969",
       "http://localhost:7070",
       "https://ts-logix.vercel.app",
+      "https://tslwms.pe"
     ],
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     credentials: true,
