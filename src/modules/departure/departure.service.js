@@ -1610,9 +1610,9 @@ async function validateSelectedCell(
     );
   }
 
-  if (inventory.current_package_quantity < requested_qty) {
+  if (inventory.current_quantity < requested_qty) {
     throw new Error(
-      `Insufficient quantity in cell ${cell.row}.${cell.bay}.${cell.position}. Available: ${inventory.current_package_quantity}, Requested: ${requested_qty}`
+      `Insufficient quantity in cell ${cell.row}.${cell.bay}.${cell.position}. Available: ${inventory.current_quantity}, Requested: ${requested_qty}`
     );
   }
 
@@ -1642,9 +1642,9 @@ async function validateSelectedCell(
     quality_status: allocation.quality_status,
     requested_qty,
     requested_weight,
-    remaining_qty: inventory.current_package_quantity - requested_qty,
+    remaining_qty: inventory.current_quantity - requested_qty,
     remaining_weight: parseFloat(inventory.current_weight) - requested_weight,
-    will_be_empty: inventory.current_package_quantity - requested_qty <= 0,
+    will_be_empty: inventory.current_quantity - requested_qty <= 0,
     
     // Additional allocation info
     guide_number: allocation.guide_number,
