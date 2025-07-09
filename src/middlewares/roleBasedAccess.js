@@ -173,8 +173,8 @@ function checkResourceAccess(resourceType) {
         });
       }
 
-      // Admin and Warehouse Incharge have full access
-      if (['ADMIN', 'WAREHOUSE_INCHARGE'].includes(userRole.name)) {
+      // Admin, Warehouse Incharge, and Pharmacist have full access
+      if (['ADMIN', 'WAREHOUSE_INCHARGE', 'PHARMACIST'].includes(userRole.name)) {
         return next();
       }
 
@@ -246,7 +246,7 @@ function checkResourceAccess(resourceType) {
 
 // Helper function to filter data based on user role
 async function filterDataByRole(data, userRole, resourceType) {
-  if (['ADMIN', 'WAREHOUSE_INCHARGE'].includes(userRole.name)) {
+  if (['ADMIN', 'WAREHOUSE_INCHARGE', 'PHARMACIST'].includes(userRole.name)) {
     return data; // Full access
   }
 

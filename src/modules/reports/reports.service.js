@@ -89,7 +89,7 @@ async function generateWarehouseReport(filters = {}, userContext = {}) {
     }
 
     // ✅ Role-based access control
-    const isClientUser = userRole && !['ADMIN', 'WAREHOUSE_INCHARGE'].includes(userRole);
+    const isClientUser = userRole && !['ADMIN', 'WAREHOUSE_INCHARGE', 'PHARMACIST'].includes(userRole);
     
     if (isClientUser && userId) {
       try {

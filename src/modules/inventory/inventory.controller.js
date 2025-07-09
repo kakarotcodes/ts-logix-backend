@@ -7,10 +7,10 @@ async function getApprovedEntryOrdersForInventory(req, res) {
     const userRole = req.user?.role;
     const organisationId = req.user?.organisation_id;
 
-    // Only warehouse and admin can access
-    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN") {
+    // Only warehouse, admin, and pharmacist can access
+    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN" && userRole !== "PHARMACIST") {
       return res.status(403).json({ 
-        message: "Access denied. Only warehouse staff can access inventory assignment." 
+        message: "Access denied. Only warehouse staff and pharmacists can access inventory assignment." 
       });
     }
 
@@ -37,10 +37,10 @@ async function getEntryOrderProductsForInventory(req, res) {
     const { entryOrderId } = req.params;
     const userRole = req.user?.role;
 
-    // Only warehouse and admin can access
-    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN") {
+    // Only warehouse, admin, and pharmacist can access
+    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN" && userRole !== "PHARMACIST") {
       return res.status(403).json({ 
-        message: "Access denied. Only warehouse staff can access inventory assignment." 
+        message: "Access denied. Only warehouse staff and pharmacists can access inventory assignment." 
       });
     }
 
@@ -468,10 +468,10 @@ async function getQuarantineInventory(req, res) {
     const userRole = req.user?.role;
     const { warehouse_id } = req.query;
 
-    // Only warehouse and admin can access
-    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN") {
+    // Only warehouse, admin, and pharmacist can access quality control
+    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN" && userRole !== "PHARMACIST") {
       return res.status(403).json({ 
-        message: "Access denied. Only warehouse staff can access quality control." 
+        message: "Access denied. Only warehouse staff and pharmacists can access quality control." 
       });
     }
 
@@ -503,10 +503,10 @@ async function getInventoryByQualityStatus(req, res) {
     const userRole = req.user?.role;
     const { quality_status, warehouse_id } = req.query;
 
-    // Only warehouse and admin can access
-    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN") {
+    // Only warehouse, admin, and pharmacist can access quality control
+    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN" && userRole !== "PHARMACIST") {
       return res.status(403).json({ 
-        message: "Access denied. Only warehouse staff can access quality control." 
+        message: "Access denied. Only warehouse staff and pharmacists can access quality control." 
       });
     }
 
@@ -588,8 +588,8 @@ async function transitionQualityStatus(req, res) {
     const userRole = req.user?.role;
     const userId = req.user?.id;
 
-    // Only warehouse and admin can perform quality transitions
-    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN") {
+    // Only warehouse, admin, and pharmacist can perform quality transitions
+    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN" && userRole !== "PHARMACIST") {
       // ✅ LOG: Access denied for quality transition
       await req.logEvent(
         'ACCESS_DENIED',
@@ -884,11 +884,11 @@ async function getInventoryAuditTrail(req, res) {
   try {
     const userRole = req.user?.role;
 
-    // Only admin and warehouse can view audit trails
-    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN") {
+    // Only admin, warehouse, and pharmacist can view audit trails
+    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN" && userRole !== "PHARMACIST") {
       return res.status(403).json({ 
         success: false,
-        message: "Access denied. Only admin and warehouse staff can view audit trails." 
+        message: "Access denied. Only admin, warehouse staff, and pharmacists can view audit trails." 
       });
     }
 

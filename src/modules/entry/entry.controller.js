@@ -554,14 +554,14 @@ async function getApprovedEntryOrders(req, res) {
       return res.status(403).json({ message: "Authorization required" });
     }
 
-    // Only warehouse and admin can access approved orders for allocation
-    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN") {
+    // Only warehouse, admin, and pharmacist can access approved orders for allocation
+    if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN" && userRole !== "PHARMACIST") {
       return res.status(403).json({ 
-        message: "Access denied. Only warehouse staff can view approved orders." 
+        message: "Access denied. Only warehouse staff and pharmacists can view approved orders." 
       });
     }
 
-    const filterOrg = (userRole === "ADMIN" || userRole === "WAREHOUSE_INCHARGE") ? null : organisationId;
+    const filterOrg = (userRole === "ADMIN" || userRole === "WAREHOUSE_INCHARGE" || userRole === "PHARMACIST") ? null : organisationId;
     const approvedOrders = await entryService.getApprovedEntryOrders(filterOrg, searchNo);
 
     return res.status(200).json({
@@ -587,7 +587,7 @@ async function reviewEntryOrder(req, res) {
     const reviewerId = req.user?.id;
     const userRole = req.user?.role;
 
-    if (!userRole || (userRole !== "ADMIN" && userRole !== "WAREHOUSE_INCHARGE")) {
+    if (!userRole || (userRole !== "ADMIN" && userRole !== "WAREHOUSE_INCHARGE" && userRole !== "PHARMACIST")) {
       // ✅ LOG: Access denied for review
       await req.logEvent(
         'ACCESS_DENIED',
