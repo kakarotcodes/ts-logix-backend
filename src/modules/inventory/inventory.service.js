@@ -1289,9 +1289,17 @@ async function getInventorySummary(filters = {}) {
             // Departure order details
             departure_order: {
               select: {
+                departure_order_id: true,
                 departure_order_no: true,
                 departure_date_time: true,
                 order_status: true,
+                destination_point: true,
+                carrier_name: true,
+                customer: {
+                  select: {
+                    name: true,
+                  }
+                }
               }
             },
             
@@ -1429,7 +1437,85 @@ async function getInventorySummary(filters = {}) {
     );
   }
 
-  // ✅ SECTION 4: RETURN COMPREHENSIVE SUMMARY
+  // ✅ SECTION 4: CREATE SIMPLIFIED MOVEMENT LOGS TABLE
+  const consolidatedMovements = [];
+  
+  // Process each inventory item's movement logs
+  processedCurrentInventory.forEach(item => {
+    if (item.movement_logs && item.movement_logs.length > 0) {
+      item.movement_logs.forEach(log => {
+        // Create movement entry with order-specific mapping
+        const movement = {
+          log_id: log.log_id,
+          timestamp: log.timestamp,
+          movement_type: log.movement_type,
+          quantity_change: log.quantity_change,
+          package_change: log.package_change,
+          weight_change: parseFloat(log.weight_change) || 0,
+          
+          // Product information
+          product_code: item.product.product_code,
+          product_name: item.product.name,
+          manufacturer: item.product.manufacturer,
+          lot_series: item.allocation.entry_order_product.lot_series,
+          
+          // Location information
+          warehouse_name: item.warehouse.name,
+          cell_reference: item.cell_reference,
+          
+          // Current status
+          current_quantity: item.current_quantity,
+          current_weight: parseFloat(item.current_weight) || 0,
+          quality_status: item.allocation.quality_status,
+          
+          // Client information (from entry order)
+          client_name: item.client_info?.company_name || `${item.client_info?.first_names || ''} ${item.client_info?.last_name || ''}`.trim(),
+          client_email: item.client_info?.email,
+          
+          // Additional details
+          manufacturing_date: item.allocation.entry_order_product.manufacturing_date,
+          expiration_date: item.allocation.entry_order_product.expiration_date,
+          notes: log.notes || null,
+        };
+
+        // Map order details based on movement type
+        if (log.movement_type === 'ENTRY') {
+          // For entries, map entry order details
+          movement.order_no = item.allocation.entry_order.entry_order_no;
+          movement.order_id = item.allocation.entry_order.entry_order_id;
+          movement.order_date = item.allocation.entry_order.registration_date;
+          movement.order_type = 'ENTRY';
+          movement.created_by = item.allocation.entry_order.creator ? 
+            `${item.allocation.entry_order.creator.first_name} ${item.allocation.entry_order.creator.last_name}` : null;
+          movement.reviewed_by = item.allocation.entry_order.reviewer ? 
+            `${item.allocation.entry_order.reviewer.first_name} ${item.allocation.entry_order.reviewer.last_name}` : null;
+        } else if (log.movement_type === 'DEPARTURE' && log.departure_order) {
+          // For departures, map departure order details
+          movement.order_no = log.departure_order.departure_order_no;
+          movement.order_id = log.departure_order_id;
+          movement.order_date = log.departure_order.departure_date_time;
+          movement.order_type = 'DEPARTURE';
+          movement.order_status = log.departure_order.order_status;
+          movement.destination_point = log.departure_order.destination_point;
+          movement.carrier_name = log.departure_order.carrier_name;
+          movement.customer_name = log.departure_order.customer?.name || null;
+        } else {
+          // For adjustments or entries without departure orders
+          movement.order_no = item.allocation.entry_order.entry_order_no;
+          movement.order_id = item.allocation.entry_order.entry_order_id;
+          movement.order_date = item.allocation.entry_order.registration_date;
+          movement.order_type = 'ENTRY';
+        }
+
+        consolidatedMovements.push(movement);
+      });
+    }
+  });
+
+  // Sort by timestamp (newest first)
+  consolidatedMovements.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  // ✅ SECTION 5: RETURN SIMPLIFIED SUMMARY
   const summaryStats = {
     current_inventory: {
       total_items: processedCurrentInventory.length,
@@ -1438,26 +1524,19 @@ async function getInventorySummary(filters = {}) {
       unique_products: [...new Set(processedCurrentInventory.map(item => item.product.product_id))].length,
       warehouses: [...new Set(processedCurrentInventory.map(item => item.warehouse.warehouse_id))].length,
     },
-    dispatch_history: {
-      total_dispatch_events: dispatchHistory.length,
-      total_dispatched_quantity: dispatchHistory.reduce((sum, log) => sum + (log.dispatched_quantity || 0), 0),
-      total_dispatched_weight: dispatchHistory.reduce((sum, log) => sum + (log.dispatched_weight || 0), 0),
-      unique_departure_orders: [...new Set(dispatchHistory.map(log => log.departure_order_id).filter(Boolean))].length,
-      unique_dispatched_products: [...new Set(dispatchHistory.map(log => log.product_id))].length,
-    },
-    completed_orders: {
-      total_orders: completedDepartureOrders.length,
-      fully_completed: completedDepartureOrders.filter(order => order.is_fully_dispatched).length,
-      partially_completed: completedDepartureOrders.filter(order => order.is_partially_dispatched).length,
-      total_order_quantity: completedDepartureOrders.reduce((sum, order) => sum + (order.total_dispatched_quantity || 0), 0),
+    movement_logs: {
+      total_movements: consolidatedMovements.length,
+      total_entries: consolidatedMovements.filter(m => m.movement_type === 'ENTRY').length,
+      total_departures: consolidatedMovements.filter(m => m.movement_type === 'DEPARTURE').length,
+      total_adjustments: consolidatedMovements.filter(m => m.movement_type === 'ADJUSTMENT').length,
+      unique_products: [...new Set(consolidatedMovements.map(m => m.product_id))].length,
     }
   };
 
   return {
+    success: true,
     summary_stats: summaryStats,
-    current_inventory: processedCurrentInventory,
-    dispatch_history: dispatchHistory,
-    completed_departure_orders: completedDepartureOrders,
+    movement_logs: consolidatedMovements,
     filters_applied: {
       warehouse_id: warehouse_id || 'ALL',
       product_id: product_id || 'ALL', 
