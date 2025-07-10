@@ -1025,7 +1025,7 @@ async function getCellsByQualityStatus(req, res) {
         accessInfo.reason = `Entry order created by CLIENT - showing only client-assigned cells`;
         accessInfo.entry_order_creator_role = "CLIENT";
       } else {
-        // ✅ WAREHOUSE_INCHARGE entry order: Show all cells
+        // ✅ WAREHOUSE_INCHARGE/PHARMACIST entry order: Show all cells
         cells = await inventoryService.getCellsByQualityStatus(quality_status, warehouse_id);
         accessInfo.reason = `Entry order created by ${entryOrderInfo.creator_role} - showing all cells`;
         accessInfo.entry_order_creator_role = entryOrderInfo.creator_role;
