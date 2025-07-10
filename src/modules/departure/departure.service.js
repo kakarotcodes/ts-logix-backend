@@ -1342,14 +1342,8 @@ async function createDepartureOrder(departureData) {
         dispatch_document_number: departureData.dispatch_document_number, // ✅ MANDATORY
         document_type_ids: departureData.document_type_ids, // ✅ MANDATORY: Multi-select
         
-        // ✅ MANDATORY: Document uploads
-        uploaded_documents: {
-          dispatch_document_number: departureData.dispatch_document_number,
-          document_types: departureData.document_type_ids,
-          documents: departureData.uploaded_documents || [],
-          uploaded_at: new Date().toISOString(),
-          uploaded_by: departureData.created_by
-        },
+        // ✅ FIXED: Document uploads - use same structure as entry orders
+        uploaded_documents: null, // Will be populated by controller after file upload
         
         // ✅ NEW: Dispatch tracking (separate from approval)
         dispatch_status: "NOT_DISPATCHED", // Will be updated when actually dispatched

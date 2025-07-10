@@ -234,13 +234,52 @@ async function getPaginatedDepartureOrders(filters = {}, cursor = null, pageSize
           name: true
         }
       },
+      creator: {
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          role: true
+        }
+      },
+      reviewer: {
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          role: true
+        }
+      },
+      dispatcher: {
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          role: true
+        }
+      },
+      order: {
+        select: {
+          order_id: true,
+          order_type: true,
+          status: true,
+          created_at: true,
+          organisation: {
+            select: {
+              organisation_id: true,
+              name: true
+            }
+          }
+        }
+      },
       products: {
         include: {
           product: {
             select: {
               product_id: true,
               name: true,
-              product_code: true
+              product_code: true,
+              manufacturer: true
             }
           }
         }
