@@ -88,6 +88,48 @@ async function generateWarehouseReport(filters = {}, userContext = {}) {
       whereClause.quality_status = filters.quality_status;
     }
 
+    // ✅ Customer filtering (fixed to use correct database relationships)
+    if (filters.customer_name || filters.customer_code) {
+      whereClause.entry_order_product = {
+        ...whereClause.entry_order_product,
+        entry_order: {
+          ...whereClause.entry_order_product?.entry_order,
+          OR: [
+            // Filter by entry order creator (if they are a client)
+            filters.customer_name ? {
+              creator: {
+                role: { name: 'CLIENT' },
+                OR: [
+                  { first_name: { contains: filters.customer_name, mode: 'insensitive' } },
+                  { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+                ]
+              }
+            } : {},
+            // Filter by client assignments to products
+            filters.customer_name ? {
+              entryOrderProducts: {
+                some: {
+                  product: {
+                    clientAssignments: {
+                      some: {
+                        client: {
+                          OR: [
+                            { company_name: { contains: filters.customer_name, mode: 'insensitive' } },
+                            { first_names: { contains: filters.customer_name, mode: 'insensitive' } },
+                            { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } : {}
+          ].filter(condition => Object.keys(condition).length > 0)
+        }
+      };
+    }
+
     // ✅ Role-based access control
     const isClientUser = userRole && !['ADMIN', 'WAREHOUSE_INCHARGE', 'PHARMACIST'].includes(userRole);
     
@@ -590,13 +632,41 @@ async function generateProductCategoryReport(filters, userContext) {
       whereConditions.allocated_at = dateFilter;
     }
 
-    // Customer filtering
+    // ✅ Customer filtering (fixed to use correct database relationships)
     if (filters.customer_name || filters.customer_code) {
       whereConditions.entry_order_product = {
         entry_order: {
           OR: [
-            filters.customer_name ? { customer_name: { contains: filters.customer_name, mode: 'insensitive' } } : {},
-            filters.customer_code ? { customer_code: { contains: filters.customer_code, mode: 'insensitive' } } : {}
+            // Filter by entry order creator (if they are a client)
+            filters.customer_name ? {
+              creator: {
+                role: { name: 'CLIENT' },
+                OR: [
+                  { first_name: { contains: filters.customer_name, mode: 'insensitive' } },
+                  { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+                ]
+              }
+            } : {},
+            // Filter by client assignments to products
+            filters.customer_name ? {
+              entryOrderProducts: {
+                some: {
+                  product: {
+                    clientAssignments: {
+                      some: {
+                        client: {
+                          OR: [
+                            { company_name: { contains: filters.customer_name, mode: 'insensitive' } },
+                            { first_names: { contains: filters.customer_name, mode: 'insensitive' } },
+                            { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } : {}
           ].filter(condition => Object.keys(condition).length > 0)
         }
       };
@@ -832,21 +902,73 @@ async function generateProductWiseReport(filters, userContext) {
       departureWhereConditions.departure_order = { departure_date_time: dateFilter };
     }
 
-    // Customer filtering
+    // ✅ Customer filtering (fixed to use correct database relationships)
     if (filters.customer_name || filters.customer_code) {
-      const customerFilter = {
+      // Entry order customer filtering
+      const entryCustomerFilter = {
         OR: [
-          filters.customer_name ? { customer_name: { contains: filters.customer_name, mode: 'insensitive' } } : {},
-          filters.customer_code ? { customer_code: { contains: filters.customer_code, mode: 'insensitive' } } : {}
+          // Filter by entry order creator (if they are a client)
+          filters.customer_name ? {
+            creator: {
+              role: { name: 'CLIENT' },
+              OR: [
+                { first_name: { contains: filters.customer_name, mode: 'insensitive' } },
+                { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+              ]
+            }
+          } : {},
+          // Filter by client assignments to products  
+          filters.customer_name ? {
+            entryOrderProducts: {
+              some: {
+                product: {
+                  clientAssignments: {
+                    some: {
+                      client: {
+                        OR: [
+                          { company_name: { contains: filters.customer_name, mode: 'insensitive' } },
+                          { first_names: { contains: filters.customer_name, mode: 'insensitive' } },
+                          { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } : {}
         ].filter(condition => Object.keys(condition).length > 0)
       };
+      
+      // Departure order customer filtering  
+      const departureCustomerFilter = {
+        OR: [
+          // Filter by Customer model
+          filters.customer_name ? {
+            customer: { 
+              name: { contains: filters.customer_name, mode: 'insensitive' } 
+            }
+          } : {},
+          // Filter by Client model
+          filters.customer_name ? {
+            client: {
+              OR: [
+                { company_name: { contains: filters.customer_name, mode: 'insensitive' } },
+                { first_names: { contains: filters.customer_name, mode: 'insensitive' } },
+                { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+              ]
+            }
+          } : {}
+        ].filter(condition => Object.keys(condition).length > 0)
+      };
+      
       entryWhereConditions.entry_order = {
         ...entryWhereConditions.entry_order,
-        ...customerFilter
+        ...entryCustomerFilter
       };
       departureWhereConditions.departure_order = {
         ...departureWhereConditions.departure_order,
-        ...customerFilter
+        ...departureCustomerFilter
       };
     }
 
@@ -1189,8 +1311,20 @@ async function generateCardexReport(filters, userContext) {
       Object.assign(productWhereConditions, productFilter);
     }
 
-    // Client filtering for orders (removed customer_name/customer_code as they don't exist)
+    // ✅ Customer filtering for orders (fixed to use correct database relationships)
     const entryOrderFilter = {};
+    
+    // Customer filtering implementation (simplified to avoid complex nested queries)
+    if (filters.customer_name || filters.customer_code) {
+      // Simple approach: filter by creator with CLIENT role
+      entryOrderFilter.creator = {
+        role: { name: 'CLIENT' },
+        OR: [
+          { first_name: { contains: filters.customer_name, mode: 'insensitive' } },
+          { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+        ]
+      };
+    }
 
     // Role-based access control for entry orders
     let clientFilter = {};
@@ -1214,6 +1348,35 @@ async function generateCardexReport(filters, userContext) {
     // Combine customer and client filters for entry orders
     const finalEntryOrderFilter = {
       ...entryOrderFilter,
+      ...clientFilter
+    };
+
+    // ✅ Create departure order customer filtering
+    const departureOrderFilter = {};
+    if (filters.customer_name || filters.customer_code) {
+      departureOrderFilter.OR = [
+        // Filter by Customer model
+        filters.customer_name ? {
+          customer: { 
+            name: { contains: filters.customer_name, mode: 'insensitive' } 
+          }
+        } : {},
+        // Filter by Client model
+        filters.customer_name ? {
+          client: {
+            OR: [
+              { company_name: { contains: filters.customer_name, mode: 'insensitive' } },
+              { first_names: { contains: filters.customer_name, mode: 'insensitive' } },
+              { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+            ]
+          }
+        } : {}
+      ].filter(condition => Object.keys(condition).length > 0);
+    }
+
+    // Combine customer and client filters for departure orders
+    const finalDepartureOrderFilter = {
+      ...departureOrderFilter,
       ...clientFilter
     };
 
@@ -1273,7 +1436,7 @@ async function generateCardexReport(filters, userContext) {
     const allDepartureOrderProducts = await prisma.departureOrderProduct.findMany({
       where: {
         product: productWhereConditions,
-        departure_order: finalEntryOrderFilter
+        departure_order: finalDepartureOrderFilter
       },
       include: {
         product: {
