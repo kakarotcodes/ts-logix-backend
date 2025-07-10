@@ -3474,7 +3474,7 @@ async function getCellsByQualityStatusForClient(qualityStatus, warehouseId = nul
 
   const allowedRoles = statusToCellRoleMap[qualityStatus] || ["STANDARD"];
   
-  // Find the client record for the user
+  // Find the client record for the user using ClientUser relationship
   const clientUser = await prisma.user.findUnique({
     where: { id: clientUserId },
     include: {
@@ -3486,34 +3486,32 @@ async function getCellsByQualityStatusForClient(qualityStatus, warehouseId = nul
     throw new Error(`User is not a client. Role found: ${clientUser?.role?.name || 'undefined'}`);
   }
 
-  // Find the client record that matches this user
-  let client = await prisma.client.findFirst({
+  // ✅ FIXED: Use ClientUser relationship to find the correct client
+  const clientUserRecord = await prisma.clientUser.findFirst({
     where: { 
-      email: clientUser.email
+      user_id: clientUserId,
+      is_active: true
     },
-    select: { client_id: true }
+    select: { 
+      client_id: true,
+      client: {
+        select: {
+          client_id: true,
+          company_name: true,
+          first_names: true,
+          last_name: true
+        }
+      }
+    }
   });
 
-  // ✅ FALLBACK: If no client found by email, find any client in the same organization
-  if (!client) {
-    console.log(`⚠️ No client found with email ${clientUser.email}, looking for any client...`);
-    
-    // For now, let's get the first active client as a fallback
-    client = await prisma.client.findFirst({
-      where: {
-        active_state: {
-          name: "Active"
-        }
-      },
-      select: { client_id: true }
-    });
-    
-    if (!client) {
-      throw new Error("No active client found in the system. Please create a client record first.");
-    }
-    
-    console.log(`📝 Using fallback client: ${client.client_id}`);
+  if (!clientUserRecord) {
+    throw new Error(`No client record found for user ${clientUserId}. User may not be properly associated with a client.`);
   }
+
+  const client = { client_id: clientUserRecord.client_id };
+  console.log(`📝 Found client for user ${clientUserId}: ${clientUserRecord.client.company_name || `${clientUserRecord.client.first_names} ${clientUserRecord.client.last_name}`}`);
+  
 
   // Build where clause for client-assigned cells with quality status filtering
   const where = {
