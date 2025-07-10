@@ -1315,6 +1315,8 @@ async function generateCardexReport(filters, userContext) {
                     insured_value: true,
                     inventory_quantity: true,
                     lot_series: true,
+                    expiration_date: true,
+                    manufacturing_date: true,
                     entry_order_id: true
                   }
                 }
@@ -1369,7 +1371,9 @@ async function generateCardexReport(filters, userContext) {
           stock_in: { quantity: 0, financial_value: 0 },
           stock_out: { quantity: 0, financial_value: 0 },
           closing_balance: { quantity: 0, financial_value: 0 },
-          movements: []
+          movements: [],
+          lot_numbers: new Set(), // Track unique lot numbers
+          expiry_dates: new Set() // Track unique expiry dates
         };
       }
 
@@ -1387,11 +1391,21 @@ async function generateCardexReport(filters, userContext) {
         cardexData[productKey].stock_in.quantity += quantity;
         cardexData[productKey].stock_in.financial_value += financialValue;
         
+        // Track lot numbers and expiry dates
+        if (entryProduct.lot_series) {
+          cardexData[productKey].lot_numbers.add(entryProduct.lot_series);
+        }
+        if (entryProduct.expiration_date) {
+          cardexData[productKey].expiry_dates.add(entryProduct.expiration_date.toISOString());
+        }
+        
         cardexData[productKey].movements.push({
           type: 'STOCK_IN',
           date: entryDate,
           reference: entryProduct.entry_order.entry_order_no,
           lot_number: entryProduct.lot_series,
+          expiration_date: entryProduct.expiration_date,
+          manufacturing_date: entryProduct.manufacturing_date,
           quantity: quantity,
           financial_value: financialValue,
           client_name: cardexData[productKey].client_name
@@ -1439,7 +1453,9 @@ async function generateCardexReport(filters, userContext) {
           stock_in: { quantity: 0, financial_value: 0 },
           stock_out: { quantity: 0, financial_value: 0 },
           closing_balance: { quantity: 0, financial_value: 0 },
-          movements: []
+          movements: [],
+          lot_numbers: new Set(), // Track unique lot numbers
+          expiry_dates: new Set() // Track unique expiry dates
         };
       }
 
@@ -1476,10 +1492,27 @@ async function generateCardexReport(filters, userContext) {
         cardexData[productKey].stock_out.quantity += quantity;
         cardexData[productKey].stock_out.financial_value += financialValue;
         
+        // Get lot number and expiry date from source allocation
+        const sourceAllocation = departureProduct.departureAllocations?.[0]?.source_allocation;
+        const entryOrderProduct = sourceAllocation?.entry_order_product;
+        const lotNumber = entryOrderProduct?.lot_series || departureProduct.lot_series;
+        const expirationDate = entryOrderProduct?.expiration_date;
+        
+        // Track lot numbers and expiry dates
+        if (lotNumber) {
+          cardexData[productKey].lot_numbers.add(lotNumber);
+        }
+        if (expirationDate) {
+          cardexData[productKey].expiry_dates.add(expirationDate.toISOString());
+        }
+        
         cardexData[productKey].movements.push({
           type: 'STOCK_OUT',
           date: departureDate,
           reference: departureProduct.departure_order.departure_order_no,
+          lot_number: lotNumber,
+          expiration_date: expirationDate,
+          manufacturing_date: entryOrderProduct?.manufacturing_date,
           quantity: quantity,
           financial_value: financialValue,
           client_name: cardexData[productKey].client_name
@@ -1502,6 +1535,10 @@ async function generateCardexReport(filters, userContext) {
 
       // Sort movements by date
       productData.movements.sort((a, b) => new Date(a.date) - new Date(b.date));
+      
+      // Convert Sets to arrays for JSON serialization
+      productData.lot_numbers = Array.from(productData.lot_numbers);
+      productData.expiry_dates = Array.from(productData.expiry_dates).map(date => new Date(date));
     });
 
     // Convert to array and filter out products with no activity
