@@ -628,6 +628,7 @@ async function getAvailableCells(warehouseId, entryOrderId = null) {
           where: {
             warehouse_id: warehouseId, // ✅ Ensure warehouse consistency
             status: "AVAILABLE",
+            is_passage: false, // ✅ Exclude passage cells from allocation
             clientCellAssignments: {
               some: {
                 client_id: client.client_id,
@@ -690,6 +691,7 @@ async function getAvailableCells(warehouseId, entryOrderId = null) {
     where: {
       warehouse_id: warehouseId,
       status: "AVAILABLE",
+      is_passage: false, // ✅ Exclude passage cells from allocation
     },
     select: {
       id: true,

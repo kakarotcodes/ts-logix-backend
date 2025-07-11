@@ -24,7 +24,7 @@ async function assignPallets(
     if (palletCount < 1) throw new Error("palletCount must be ≥ 1");
 
     const freeSlots = await tx.warehouseCell.findMany({
-      where: { warehouse_id, row, kind: "NORMAL", status: "AVAILABLE" },
+      where: { warehouse_id, row, kind: "NORMAL", status: "AVAILABLE", is_passage: false },
       orderBy: [{ bay: "asc" }, { position: "asc" }],
     });
     if (freeSlots.length < palletCount) {
@@ -211,7 +211,10 @@ async function getAllWarehouseCells(filter = {}, userContext = {}) {
         RETURNS: "DEVOLUCIONES - Product returns",
         DAMAGED: "Damaged products",
         EXPIRED: "Expired products"
-      }[cell.cell_role] || "Regular storage"
+      }[cell.cell_role] || "Regular storage",
+      // ✅ NEW: Add passage cell indicator for frontend filtering
+      is_passage: cell.is_passage || false,
+      display_type: cell.is_passage ? "PASSAGE" : "CELL"
     };
   });
 }
@@ -292,12 +295,15 @@ async function fetchWarehouses(userContext = {}) {
           status: true,
           _count: {
             select: {
-              cells: true,
+              cells: {
+                where: { is_passage: false } // Exclude passage cells from storage counts
+              },
               inventory: true,
-              // ✅ Count cells assigned to user's clients
+              // ✅ Count cells assigned to user's clients (excluding passages)
               clientCellAssignments: {
                 where: {
                   is_active: true,
+                  cell: { is_passage: false }, // Only count storage cell assignments
                   client: {
                     clientUsers: {
                       some: {
@@ -337,10 +343,15 @@ async function fetchWarehouses(userContext = {}) {
       status: true,
       _count: {
         select: {
-          cells: true,
+          cells: {
+            where: { is_passage: false } // Exclude passage cells from storage counts
+          },
           inventory: true,
           clientCellAssignments: {
-            where: { is_active: true }
+            where: { 
+              is_active: true,
+              cell: { is_passage: false } // Only count storage cell assignments
+            }
           }
         }
       }

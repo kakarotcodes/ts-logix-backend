@@ -1250,6 +1250,7 @@ model WarehouseCell {
   kind                      CellKind              @default(NORMAL)
   status                    CellStatus            @default(AVAILABLE)
   cell_role                 CellRole              @default(STANDARD)
+  is_passage                Boolean               @default(false)  // Mark passage cells
   capacity                  Decimal               @db.Decimal(10,2)  @default(1)
   currentUsage              Decimal               @db.Decimal(10,2)  @default(0)
   

@@ -1137,6 +1137,16 @@ async function createWarehousesAndCells() {
       for (let row of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P']) {
         for (let bay = 1; bay <= 28; bay++) {
           for (let position = 1; position <= 10; position++) {
+            // Determine if this is a passage cell
+            const isPassage = (
+              // B row specific passages: B.13.01, B.13.02, B.13.03, B.14.01, B.14.02, B.14.03
+              (row === 'B' && bay === 13 && [1, 2, 3].includes(position)) ||
+              (row === 'B' && bay === 14 && [1, 2, 3].includes(position)) ||
+              // Rows C to Q: same pattern as B row - passages in bays 13 and 14, positions 1, 2, 3
+              (['C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'].includes(row) && 
+               ((bay === 13 && [1, 2, 3].includes(position)) || (bay === 14 && [1, 2, 3].includes(position))))
+            );
+            
             allCells.push({
               warehouse_id: warehouse.warehouse_id,
               row: row,
@@ -1145,6 +1155,7 @@ async function createWarehousesAndCells() {
               kind: "NORMAL",
               status: "AVAILABLE",
               cell_role: "STANDARD",
+              is_passage: isPassage,
               capacity: 100.00,
               currentUsage: 0.00,
               current_packaging_qty: 0,
@@ -1157,6 +1168,12 @@ async function createWarehousesAndCells() {
       // Create Q row cells (20 bays, 10 positions)
       for (let bay = 1; bay <= 20; bay++) {
         for (let position = 1; position <= 10; position++) {
+          // Q row follows same passage pattern as other rows
+          const isPassage = (
+            (bay === 13 && [1, 2, 3].includes(position)) || 
+            (bay === 14 && [1, 2, 3].includes(position))
+          );
+          
           allCells.push({
             warehouse_id: warehouse.warehouse_id,
             row: 'Q',
@@ -1165,6 +1182,7 @@ async function createWarehousesAndCells() {
             kind: "NORMAL",
             status: "AVAILABLE",
             cell_role: "STANDARD",
+            is_passage: isPassage,
             capacity: 100.00,
             currentUsage: 0.00,
             current_packaging_qty: 0,
@@ -1184,6 +1202,7 @@ async function createWarehousesAndCells() {
             kind: "RESERVED",
             status: "AVAILABLE",
             cell_role: "RETURNS",
+            is_passage: false, // Special purpose cells are not passages
             capacity: 75.00,
             currentUsage: 0.00,
             current_packaging_qty: 0,
@@ -1203,6 +1222,7 @@ async function createWarehousesAndCells() {
             kind: "RESERVED",
             status: "AVAILABLE",
             cell_role: "SAMPLES",
+            is_passage: false, // Special purpose cells are not passages
             capacity: 50.00,
             currentUsage: 0.00,
             current_packaging_qty: 0,
@@ -1222,6 +1242,7 @@ async function createWarehousesAndCells() {
             kind: "DAMAGED",
             status: "AVAILABLE",
             cell_role: "REJECTED",
+            is_passage: false, // Special purpose cells are not passages
             capacity: 50.00,
             currentUsage: 0.00,
             current_packaging_qty: 0,

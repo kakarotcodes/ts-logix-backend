@@ -49,16 +49,36 @@ async function listWarehouseCells(req, res) {
       filteredCells = filteredCells.filter(cell => cell.cell_role === req.query.cell_role);
     }
     
-    // Get summary statistics
+    // ✅ NEW: Filter by passage cells if requested
+    if (req.query.include_passages !== undefined) {
+      const includePassages = req.query.include_passages === 'true';
+      if (!includePassages) {
+        filteredCells = filteredCells.filter(cell => !cell.is_passage);
+      }
+    }
+    
+    // Get summary statistics - exclude passage cells from storage counts
+    const storageCells = allCells.filter(cell => !cell.is_passage);
+    const filteredStorageCells = filteredCells.filter(cell => !cell.is_passage);
+    
     const summary = {
+      // Total counts (including passages for reference)
       total_cells: allCells.length,
       filtered_cells: filteredCells.length,
-      assigned_to_clients: allCells.filter(cell => cell.is_assigned_to_client).length,
-      unassigned_cells: allCells.filter(cell => !cell.is_assigned_to_client).length,
-      available_cells: allCells.filter(cell => cell.status === 'AVAILABLE').length,
-      occupied_cells: allCells.filter(cell => cell.status === 'OCCUPIED').length,
-      cells_with_inventory: allCells.filter(cell => cell.has_inventory).length,
-      // ✅ NEW: Add user context info
+      
+      // Storage cell counts (excluding passages)
+      total_storage_cells: storageCells.length,
+      filtered_storage_cells: filteredStorageCells.length,
+      assigned_to_clients: storageCells.filter(cell => cell.is_assigned_to_client).length,
+      unassigned_cells: storageCells.filter(cell => !cell.is_assigned_to_client).length,
+      available_cells: storageCells.filter(cell => cell.status === 'AVAILABLE').length,
+      occupied_cells: storageCells.filter(cell => cell.status === 'OCCUPIED').length,
+      cells_with_inventory: storageCells.filter(cell => cell.has_inventory).length,
+      
+      // Passage cell statistics (for reference)
+      passage_cells: allCells.filter(cell => cell.is_passage).length,
+      
+      // User context info
       user_role: userContext.userRole,
       is_client_filtered: userContext.userRole && !['ADMIN', 'WAREHOUSE_INCHARGE'].includes(userContext.userRole)
     };

@@ -1357,6 +1357,7 @@ async function getAvailableCellsForClient(warehouseId) {
     const availableCells = await prisma.warehouseCell.findMany({
       where: {
         ...whereCondition,
+        is_passage: false, // ✅ Exclude passage cells from client assignment
         // Exclude cells that have active client assignments
         clientCellAssignments: {
           none: {

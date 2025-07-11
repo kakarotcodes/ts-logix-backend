@@ -279,8 +279,11 @@ async function generateWarehouseReport(filters = {}, userContext = {}) {
 
     console.log(`📦 Retrieved ${inventoryData.length} inventory allocations for report`);
 
-    // ✅ Get all warehouse cells for space calculation
+    // ✅ Get all warehouse storage cells for space calculation (exclude passages)
     const warehouseCells = await prisma.warehouseCell.findMany({
+      where: {
+        is_passage: false // Only count storage cells, not passages
+      },
       select: {
         id: true,
         status: true,
