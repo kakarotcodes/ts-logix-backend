@@ -969,6 +969,22 @@ async function bulkUpdateClients(req, res) {
   }
 }
 
+
+// ✅ NEW: Get next client code
+async function getNextClientCode(req, res) {
+  try {
+    const result = await clientService.getNextClientCode();
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Error in getNextClientCode controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate next client code",
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   createClient,
   getAllClients,
@@ -989,4 +1005,5 @@ module.exports = {
   getPendingCredentials,
   getClientCredentialsById,
   markCredentialsHandedOver,
+  getNextClientCode,
 }; 

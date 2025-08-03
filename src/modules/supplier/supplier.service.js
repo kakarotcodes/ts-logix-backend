@@ -8,9 +8,42 @@ const prisma = new PrismaClient();
  */
 async function createSupplier(supplierData, userRole = null, userId = null) {
   try {
+    // Generate supplier code if not provided
+    let supplierCode = supplierData.supplier_code;
+    if (!supplierCode) {
+      const currentYear = new Date().getFullYear();
+      const yearPrefix = `PRO${currentYear}`;
+      
+      // Find the latest supplier code for the current year
+      const latestSupplier = await prisma.supplier.findFirst({
+        where: {
+          supplier_code: {
+            startsWith: yearPrefix
+          }
+        },
+        orderBy: {
+          supplier_code: 'desc'
+        },
+        select: {
+          supplier_code: true
+        }
+      });
+      
+      let sequenceNumber = 1;
+      if (latestSupplier && latestSupplier.supplier_code) {
+        // Extract the sequence number from the latest code
+        const latestSequence = latestSupplier.supplier_code.substring(yearPrefix.length);
+        sequenceNumber = parseInt(latestSequence) + 1;
+      }
+      
+      // Format with leading zeros (3 digits)
+      supplierCode = `${yearPrefix}${sequenceNumber.toString().padStart(3, '0')}`;
+    }
+
     const newSupplier = await prisma.supplier.create({
       data: {
         company_name: supplierData.company_name,
+        supplier_code: supplierCode,
         category: supplierData.category || null,
         tax_id: supplierData.tax_id || null,
         registered_address: supplierData.registered_address || null,
@@ -26,6 +59,11 @@ async function createSupplier(supplierData, userRole = null, userId = null) {
         ...(supplierData.country_id && {
           country: {
             connect: { country_id: supplierData.country_id }
+          }
+        }),
+        ...(userId && {
+          createdBy: {
+            connect: { id: userId }
           }
         })
       },
@@ -260,34 +298,31 @@ async function getSupplierById(supplierId) {
     const supplier = await prisma.supplier.findUnique({
       where: { supplier_id: supplierId },
       include: {
-        country: true,
-        entryOrderProducts: {
+        country: {
           select: {
-            entry_order_product_id: true,
-            product_code: true,
-            serial_number: true,
-            lot_series: true,
-            entry_order: {
+            country_id: true,
+            name: true
+          }
+        },
+        createdBy: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            role: { select: { name: true } }
+          }
+        },
+        clientAssignments: {
+          where: { is_active: true },
+          include: {
+            client: {
               select: {
-                entry_order_id: true,
-                entry_order_no: true,
-                registration_date: true,
-                order: {
-                  select: {
-                    created_at: true,
-                    organisation: {
-                      select: {
-                        name: true
-                      }
-                    }
-                  }
-                }
+                client_id: true,
+                company_name: true,
+                first_names: true,
+                last_name: true,
+                client_type: true
               }
-            }
-          },
-          orderBy: {
-            entry_order: {
-              registration_date: 'desc'
             }
           }
         }
@@ -306,17 +341,64 @@ async function getSupplierById(supplierId) {
 }
 
 /**
- * Update supplier
+ * Check if user can edit supplier (role-based permission check)
+ * @param {string} supplierId - Supplier ID
+ * @param {string} userRole - User role
+ * @param {string} userId - User ID
+ * @returns {Promise<boolean>} - Can edit supplier
+ */
+async function canEditSupplier(supplierId, userRole, userId) {
+  try {
+    // ADMIN and WAREHOUSE_INCHARGE can edit any supplier
+    if (userRole === 'ADMIN' || userRole === 'WAREHOUSE_INCHARGE') {
+      return true;
+    }
+    
+    // CLIENT can only edit suppliers they created
+    if (userRole === 'CLIENT') {
+      const supplier = await prisma.supplier.findUnique({
+        where: { supplier_id: supplierId },
+        select: { created_by: true }
+      });
+      
+      if (!supplier) {
+        throw new Error('Supplier not found');
+      }
+      
+      return supplier.created_by === userId;
+    }
+    
+    // Other roles cannot edit suppliers
+    return false;
+  } catch (error) {
+    console.error(`Error checking edit permission for supplier ${supplierId}:`, error);
+    throw new Error(`Error checking edit permission: ${error.message}`);
+  }
+}
+
+/**
+ * Update supplier with role-based access control
  * @param {string} supplierId - Supplier ID
  * @param {Object} supplierData - Updated supplier data
+ * @param {string} userRole - User role
+ * @param {string} userId - User ID
  * @returns {Promise<Object>} - Updated supplier
  */
-async function updateSupplier(supplierId, supplierData) {
+async function updateSupplier(supplierId, supplierData, userRole = null, userId = null) {
   try {
+    // Check permissions if user context is provided
+    if (userRole && userId) {
+      const canEdit = await canEditSupplier(supplierId, userRole, userId);
+      if (!canEdit) {
+        throw new Error('Insufficient permissions to edit this supplier');
+      }
+    }
+    
     const updatedSupplier = await prisma.supplier.update({
       where: { supplier_id: supplierId },
       data: {
         ...(supplierData.company_name !== undefined && { company_name: supplierData.company_name }),
+        ...(supplierData.supplier_code !== undefined && { supplier_code: supplierData.supplier_code }),
         ...(supplierData.category !== undefined && { category: supplierData.category }),
         ...(supplierData.tax_id !== undefined && { tax_id: supplierData.tax_id }),
         ...(supplierData.registered_address !== undefined && { registered_address: supplierData.registered_address }),
@@ -336,7 +418,34 @@ async function updateSupplier(supplierId, supplierData) {
         })
       },
       include: {
-        country: true
+        country: {
+          select: {
+            country_id: true,
+            name: true
+          }
+        },
+        createdBy: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            role: { select: { name: true } }
+          }
+        },
+        clientAssignments: {
+          where: { is_active: true },
+          include: {
+            client: {
+              select: {
+                client_id: true,
+                company_name: true,
+                first_names: true,
+                last_name: true,
+                client_type: true
+              }
+            }
+          }
+        }
       }
     });
     return updatedSupplier;
@@ -421,6 +530,49 @@ const getFormFields = async () => {
     throw new Error(`Error fetching form fields: ${error.message}`);
   }
 };
+
+// ✅ NEW: Generate next supplier code
+async function getNextSupplierCode() {
+  try {
+    const currentYear = new Date().getFullYear();
+    const yearPrefix = `PRO${currentYear}`;
+    
+    // Find the latest supplier code for the current year
+    const latestSupplier = await prisma.supplier.findFirst({
+      where: {
+        supplier_code: {
+          startsWith: yearPrefix
+        }
+      },
+      orderBy: {
+        supplier_code: 'desc'
+      },
+      select: {
+        supplier_code: true
+      }
+    });
+    
+    let sequenceNumber = 1;
+    if (latestSupplier && latestSupplier.supplier_code) {
+      // Extract the sequence number from the latest code
+      const latestSequence = latestSupplier.supplier_code.substring(yearPrefix.length);
+      sequenceNumber = parseInt(latestSequence) + 1;
+    }
+    
+    // Format with leading zeros (3 digits)
+    const nextSupplierCode = `${yearPrefix}${sequenceNumber.toString().padStart(3, '0')}`;
+    
+    return {
+      next_supplier_code: nextSupplierCode,
+      year: currentYear,
+      sequence_number: sequenceNumber,
+      latest_code: latestSupplier?.supplier_code || 'None'
+    };
+  } catch (error) {
+    console.error("Error generating next supplier code:", error);
+    throw new Error(`Error generating next supplier code: ${error.message}`);
+  }
+}
 
 // ✅ NEW: Create client-supplier assignments
 async function createClientSupplierAssignments(assignmentData) {
@@ -615,6 +767,174 @@ async function getAvailableSuppliersForClient(client_id) {
   }
 }
 
+// ✅ NEW: Get client information by ID with all details
+async function getClientById(clientId, userRole = null, userId = null) {
+  try {
+    // Role-based access control
+    let whereClause = { client_id: clientId };
+    
+    // CLIENT users can only see their own information
+    if (userRole === 'CLIENT' && userId) {
+      const clientUser = await prisma.clientUser.findFirst({
+        where: { 
+          user_id: userId,
+          is_active: true
+        },
+        select: { client_id: true }
+      });
+      
+      if (!clientUser || clientUser.client_id !== clientId) {
+        throw new Error('You can only access your own client information');
+      }
+    }
+    
+    // WAREHOUSE_ASSISTANT can only see assigned clients
+    if (userRole === 'WAREHOUSE_ASSISTANT' && userId) {
+      const assistantUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { assigned_clients: true }
+      });
+      
+      if (!assistantUser?.assigned_clients?.includes(clientId)) {
+        throw new Error('You can only access information for your assigned clients');
+      }
+    }
+    
+    const client = await prisma.client.findUnique({
+      where: whereClause,
+      include: {
+        // Basic relations
+        country: true,
+        clientType: true,
+        companyType: true,
+        establishmentType: true,
+        
+        // Entry orders
+        entryOrders: {
+          select: {
+            entry_order_id: true,
+            entry_order_no: true,
+            registration_date: true,
+            entry_date_time: true,
+            total_amount: true,
+            status: true
+          },
+          orderBy: { registration_date: 'desc' },
+          take: 10
+        },
+        
+        // Departure orders
+        departureOrders: {
+          select: {
+            departure_order_id: true,
+            departure_order_no: true,
+            registration_date: true,
+            total_amount: true,
+            status: true
+          },
+          orderBy: { registration_date: 'desc' },
+          take: 10
+        },
+        
+        // Supplier assignments
+        supplierAssignments: {
+          where: { is_active: true },
+          include: {
+            supplier: {
+              select: {
+                supplier_id: true,
+                company_name: true,
+                name: true,
+                category: true,
+                supplier_code: true
+              }
+            }
+          },
+          orderBy: [
+            { preferred_supplier: 'desc' },
+            { assigned_at: 'desc' }
+          ]
+        },
+        
+        // Product assignments
+        productAssignments: {
+          where: { is_active: true },
+          include: {
+            product: {
+              select: {
+                product_id: true,
+                product_code: true,
+                product_name: true,
+                description: true
+              }
+            }
+          },
+          take: 20,
+          orderBy: { assigned_at: 'desc' }
+        },
+        
+        // Cell assignments
+        cellAssignments: {
+          where: { is_active: true },
+          include: {
+            warehouseCell: {
+              select: {
+                cell_id: true,
+                cell_code: true,
+                cell_name: true,
+                warehouse: {
+                  select: {
+                    warehouse_id: true,
+                    name: true
+                  }
+                }
+              }
+            }
+          },
+          orderBy: { assigned_at: 'desc' }
+        },
+        
+        // User accounts
+        userAccounts: {
+          where: { is_active: true },
+          include: {
+            user: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                email: true,
+                role: {
+                  select: { name: true }
+                }
+              }
+            }
+          }
+        },
+        
+        // Creator information
+        createdBy: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            role: { select: { name: true } }
+          }
+        }
+      }
+    });
+    
+    if (!client) {
+      throw new Error('Client not found');
+    }
+    
+    return client;
+  } catch (error) {
+    console.error(`Error fetching client with ID ${clientId}:`, error);
+    throw new Error(`Error fetching client: ${error.message}`);
+  }
+}
+
 module.exports = {
   createSupplier,
   getAllSuppliers,
@@ -623,8 +943,11 @@ module.exports = {
   deleteSupplier,
   getFormFields,
   getSupplierCategories,
+  getNextSupplierCode,
   createClientSupplierAssignments,
   getClientSupplierAssignments,
   removeClientSupplierAssignment,
   getAvailableSuppliersForClient,
+  canEditSupplier,
+  getClientById,
 };

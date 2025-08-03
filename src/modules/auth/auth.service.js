@@ -244,4 +244,76 @@ async function loginUser(userId, plainPassword, ipAddress = null, userAgent = nu
   }
 }
 
-module.exports = { registerUser, loginUser };
+/**
+ * Changes user password
+ */
+async function changeUserPassword(userId, currentPassword, newPassword) {
+  try {
+    // Validate input
+    if (!currentPassword || !newPassword) {
+      throw new Error("Current password and new password are required");
+    }
+
+    if (newPassword.length < 6) {
+      throw new Error("New password must be at least 6 characters long");
+    }
+
+    if (currentPassword === newPassword) {
+      throw new Error("New password must be different from current password");
+    }
+
+    // Find the user
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: { select: { name: true } }
+      }
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = bcrypt.compareSync(currentPassword, user.password_hash);
+    if (!isCurrentPasswordValid) {
+      throw new Error("Current password is incorrect");
+    }
+
+    // Hash new password
+    const newPasswordHash = bcrypt.hashSync(newPassword, 10);
+
+    // Update password in User table
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password_hash: newPasswordHash }
+    });
+
+    // Log password change event
+    await eventLogger.logEvent({
+      userId: user.id,
+      action: 'PASSWORD_CHANGED',
+      entityType: 'User',
+      entityId: user.id,
+      description: `User ${user.email} successfully changed their password`,
+      metadata: {
+        operation_type: 'SECURITY',
+        action_type: 'PASSWORD_UPDATE',
+        user_email: user.email,
+        role: user.role.name,
+        change_timestamp: new Date().toISOString()
+      }
+    });
+
+    return {
+      success: true,
+      message: "Password changed successfully"
+    };
+
+  } catch (error) {
+    console.error("Error in changeUserPassword service:", error);
+    throw error;
+  }
+}
+
+module.exports = { registerUser, loginUser, changeUserPassword };

@@ -375,6 +375,9 @@ enum SystemAction {
   INTEGRATION_SYNC
   WEBHOOK_TRIGGERED
   
+  // Warehouse & Cell Management (only adding new value)
+  CELL_ROLE_CHANGE
+  
   // Error & Exception Handling
   ERROR_OCCURRED
   EXCEPTION_HANDLED
@@ -459,6 +462,9 @@ model User {
   
   productAssignments    ClientProductAssignment[] @relation("ProductAssigner")
   supplierAssignments   ClientSupplierAssignment[] @relation("SupplierAssigner")
+  
+  // ✅ NEW: Supplier creation relation
+  createdSuppliers      Supplier[]               @relation("SupplierCreatedBy")
 
   @@map("users")
 }
@@ -630,6 +636,7 @@ model Supplier {
   // ✅ NEW: Updated supplier fields based on requirements
   category            String?      // Categoria
   company_name        String       // Nombre del Proveedor (required)
+  supplier_code       String?      // Supplier Code (optional, unique if provided)
   tax_id              String?      // RUC (Tax ID)
   registered_address  String?      // Dirección Fiscal
   city                String?      // Ciudad
@@ -637,6 +644,7 @@ model Supplier {
   contact_no          String?      // Numero de Contacto
   contact_person      String?      // Persona de Contacto
   notes               String?      // Comentario
+  created_by          String?      // User ID who created this supplier
   
   // ✅ DEPRECATED: Keep old fields for backward compatibility (will be removed in future migration)
   name                String?      // Will be replaced by company_name
@@ -647,6 +655,7 @@ model Supplier {
   
   // Relations
   country             Country?     @relation(fields: [country_id], references: [country_id])
+  createdBy           User?        @relation("SupplierCreatedBy", fields: [created_by], references: [id])
   entryOrderProducts  EntryOrderProduct[]
   
   // ✅ NEW: Client supplier assignments (which clients can access this supplier)
@@ -674,6 +683,7 @@ model Customer {
 model Client {
   client_id           String            @id @default(uuid()) @map("client_id")
   client_type         ClientType        @map("client_type")
+  client_code         String?           @unique @map("client_code") // Auto-generated code like C001, C002
   
   // Common fields for both types
   email               String?

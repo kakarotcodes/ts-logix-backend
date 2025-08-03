@@ -267,4 +267,50 @@ async function login(req, res) {
   }
 }
 
-module.exports = { register, login };
+/**
+ * Handle password change
+ */
+async function changePassword(req, res) {
+  try {
+    const { current_password, new_password } = req.body;
+    const userId = req.user?.id;
+
+    if (!current_password || !new_password) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password and new password are required"
+      });
+    }
+
+    const result = await authService.changeUserPassword(userId, current_password, new_password);
+
+    return res.status(200).json(result);
+
+  } catch (error) {
+    console.error("Error in changePassword controller:", error);
+    
+    if (error.message.includes("Current password is incorrect")) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password is incorrect",
+        error: error.message
+      });
+    }
+
+    if (error.message.includes("New password must be at least")) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long",
+        error: error.message
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+}
+
+module.exports = { register, login, changePassword };

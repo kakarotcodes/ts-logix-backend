@@ -3,6 +3,89 @@ const eventLogger = require("../../utils/eventLogger");
 const bcrypt = require("bcrypt");
 const prisma = new PrismaClient();
 
+// ✅ NEW: Generate next client code (C001, C002, etc.)
+async function generateNextClientCode() {
+  try {
+    // Get the latest client with a client_code that matches the pattern C###
+    const latestClient = await prisma.client.findFirst({
+      where: {
+        client_code: {
+          startsWith: 'C',
+          // Regex to match C followed by digits
+          regex: '^C\\d+$'
+        }
+      },
+      select: { client_code: true },
+      orderBy: {
+        created_at: 'desc'
+      }
+    });
+
+    if (!latestClient || !latestClient.client_code) {
+      return 'C001'; // First client
+    }
+
+    // Extract the number from the client code (e.g., C001 -> 001 -> 1)
+    const latestNumber = parseInt(latestClient.client_code.substring(1));
+    
+    if (isNaN(latestNumber)) {
+      return 'C001'; // Fallback if parsing fails
+    }
+
+    // Generate next number with proper padding
+    const nextNumber = latestNumber + 1;
+    return `C${nextNumber.toString().padStart(3, '0')}`;
+
+  } catch (error) {
+    console.error("Error generating client code:", error);
+    
+    // Fallback: count all clients and add 1
+    try {
+      const clientCount = await prisma.client.count();
+      const nextNumber = clientCount + 1;
+      return `C${nextNumber.toString().padStart(3, '0')}`;
+    } catch (fallbackError) {
+      console.error("Fallback client code generation failed:", fallbackError);
+      return `C001`;
+    }
+  }
+}
+
+// ✅ NEW: Ensure client code uniqueness
+async function ensureUniqueClientCode(preferredCode) {
+  try {
+    let attemptCode = preferredCode;
+    let attempt = 0;
+    const maxAttempts = 1000; // Prevent infinite loops
+
+    while (attempt < maxAttempts) {
+      const existingClient = await prisma.client.findFirst({
+        where: { client_code: attemptCode },
+        select: { client_id: true }
+      });
+
+      if (!existingClient) {
+        return attemptCode; // Code is unique
+      }
+
+      // Generate next sequential code
+      attempt++;
+      const baseNumber = parseInt(preferredCode.substring(1)) + attempt;
+      attemptCode = `C${baseNumber.toString().padStart(3, '0')}`;
+    }
+
+    // If we've exhausted attempts, use timestamp-based fallback
+    const timestamp = Date.now().toString().slice(-3);
+    return `C${timestamp}`;
+
+  } catch (error) {
+    console.error("Error ensuring unique client code:", error);
+    // Timestamp-based fallback
+    const timestamp = Date.now().toString().slice(-3);
+    return `C${timestamp}`;
+  }
+}
+
 // ✅ NEW: Helper function to generate unique username
 function generateUniqueUsername(clientType, companyName, firstName, lastName) {
   const prefix = "client_";
@@ -368,6 +451,10 @@ async function createClient(clientData, cellAssignmentData = {}) {
       cleanedData.date_of_birth = new Date(cleanedData.date_of_birth);
     }
 
+    // ✅ NEW: Generate client code
+    const nextClientCode = await generateNextClientCode();
+    const uniqueClientCode = await ensureUniqueClientCode(nextClientCode);
+
     // ✅ NEW: Generate simple auto-credentials for the client (RUC-based for JURIDICO, ID-based for NATURAL)
     const autoUsername = generateSimpleUsername(
       cleanedData.client_type,
@@ -430,6 +517,7 @@ async function createClient(clientData, cellAssignmentData = {}) {
         // Prepare client data (without deprecated auto-credentials)
         Promise.resolve({
           ...cleanedData,
+          client_code: uniqueClientCode,
           created_by: cellAssignmentData.assigned_by
         })
       ]);
@@ -442,6 +530,7 @@ async function createClient(clientData, cellAssignmentData = {}) {
         select: {
           client_id: true,
           client_type: true,
+          client_code: true,
           company_name: true,
           first_names: true,
           last_name: true,
@@ -2135,6 +2224,26 @@ async function deactivateClientUser(clientUserId, deactivatedBy) {
   }
 }
 
+
+// ✅ NEW: Get next client code for frontend
+async function getNextClientCode() {
+  try {
+    const nextCode = await generateNextClientCode();
+    return {
+      success: true,
+      message: "Next client code generated successfully",
+      data: {
+        next_client_code: nextCode,
+        format: "C###",
+        description: "Auto-generated sequential client code"
+      }
+    };
+  } catch (error) {
+    console.error("Error generating next client code:", error);
+    throw new Error(`Error generating next client code: ${error.message}`);
+  }
+}
+
 module.exports = {
   createClient,
   getAllClients,
@@ -2157,5 +2266,6 @@ module.exports = {
   getClientByUserId,
   addClientUsers,
   getClientUsers,
-  deactivateClientUser
+  deactivateClientUser,
+  getNextClientCode,
 }; 

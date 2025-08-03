@@ -366,4 +366,410 @@ async function fetchWarehouses(userContext = {}) {
   }));
 }
 
-module.exports = { assignPallets, getAllWarehouseCells, fetchWarehouses };
+/**
+ * ✅ NEW: Change cell quality purpose/role (ADMIN only)
+ * @param {string} cellId - Cell ID to update
+ * @param {string} newCellRole - New cell role (STANDARD, REJECTED, SAMPLES, RETURNS, DAMAGED, EXPIRED)
+ * @param {string} userRole - User role for permission check
+ * @param {string} userId - User ID for audit trail
+ * @param {string} changeReason - Reason for the change
+ * @returns {Promise<Object>} - Updated cell with change log
+ */
+async function changeCellQualityPurpose(cellId, newCellRole, userRole, userId, changeReason = null) {
+  try {
+    // ✅ Permission check - only ADMIN can change cell roles
+    if (userRole !== 'ADMIN') {
+      throw new Error('Only ADMIN users can change cell quality purposes');
+    }
+
+    // Validate the new cell role
+    const validRoles = ['STANDARD', 'REJECTED', 'SAMPLES', 'RETURNS', 'DAMAGED', 'EXPIRED'];
+    if (!validRoles.includes(newCellRole)) {
+      throw new Error(`Invalid cell role. Must be one of: ${validRoles.join(', ')}`);
+    }
+
+    // Get current cell information
+    const currentCell = await prisma.warehouseCell.findUnique({
+      where: { id: cellId },
+      include: {
+        warehouse: {
+          select: {
+            warehouse_id: true,
+            name: true,
+            location: true
+          }
+        },
+        clientCellAssignments: {
+          where: { is_active: true },
+          include: {
+            client: {
+              select: {
+                client_id: true,
+                company_name: true,
+                first_names: true,
+                last_name: true,
+                client_type: true
+              }
+            }
+          }
+        },
+        inventory: {
+          where: { 
+            status: { in: ['AVAILABLE', 'QUARANTINED', 'RESERVED'] }
+          },
+          select: {
+            inventory_id: true,
+            current_quantity: true,
+            status: true,
+            product: {
+              select: {
+                product_code: true,
+                name: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!currentCell) {
+      throw new Error('Cell not found');
+    }
+
+    // Check if cell role is actually changing
+    if (currentCell.cell_role === newCellRole) {
+      return {
+        success: true,
+        message: `Cell is already set to ${newCellRole}`,
+        data: currentCell,
+        changed: false
+      };
+    }
+
+    // Validate cell state for role change
+    const hasActiveInventory = currentCell.inventory && currentCell.inventory.length > 0;
+    const hasClientAssignments = currentCell.clientCellAssignments && currentCell.clientCellAssignments.length > 0;
+
+    // Warning checks (not blocking, but informative)
+    const warnings = [];
+    
+    if (hasActiveInventory) {
+      warnings.push(`Cell contains ${currentCell.inventory.length} active inventory items`);
+    }
+
+    if (hasClientAssignments) {
+      const clientNames = currentCell.clientCellAssignments.map(assignment => 
+        assignment.client.client_type === 'JURIDICO' 
+          ? assignment.client.company_name 
+          : `${assignment.client.first_names} ${assignment.client.last_name}`
+      );
+      warnings.push(`Cell is assigned to client(s): ${clientNames.join(', ')}`);
+    }
+
+    // Perform the cell role update
+    const updatedCell = await prisma.$transaction(async (tx) => {
+      // Update the cell role
+      const cell = await tx.warehouseCell.update({
+        where: { id: cellId },
+        data: {
+          cell_role: newCellRole
+        },
+        include: {
+          warehouse: {
+            select: {
+              warehouse_id: true,
+              name: true,
+              location: true
+            }
+          },
+          clientCellAssignments: {
+            where: { is_active: true },
+            include: {
+              client: {
+                select: {
+                  client_id: true,
+                  company_name: true,
+                  first_names: true,
+                  last_name: true,
+                  client_type: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      // Create audit log entry for the change
+      await tx.systemAuditLog.create({
+        data: {
+          user_id: userId,
+          action: 'CELL_ROLE_CHANGE',
+          entity_type: 'WarehouseCell',
+          entity_id: cellId,
+          description: `Changed cell quality purpose from ${currentCell.cell_role} to ${newCellRole}`,
+          old_values: {
+            cell_role: currentCell.cell_role,
+            cell_reference: `${currentCell.row}.${String(currentCell.bay).padStart(2, '0')}.${String(currentCell.position).padStart(2, '0')}`,
+            warehouse: currentCell.warehouse.name
+          },
+          new_values: {
+            cell_role: newCellRole,
+            change_reason: changeReason || 'No reason provided',
+            cell_reference: `${currentCell.row}.${String(currentCell.bay).padStart(2, '0')}.${String(currentCell.position).padStart(2, '0')}`,
+            warehouse: currentCell.warehouse.name
+          },
+          metadata: {
+            operation_type: 'CELL_MANAGEMENT',
+            had_active_inventory: hasActiveInventory,
+            had_client_assignments: hasClientAssignments,
+            inventory_count: currentCell.inventory?.length || 0,
+            client_assignment_count: currentCell.clientCellAssignments?.length || 0,
+            warnings: warnings
+          }
+        }
+      });
+
+      return cell;
+    });
+
+    // Map role to human-readable purpose
+    const purposeMapping = {
+      STANDARD: "Regular storage",
+      REJECTED: "RECHAZADOS - Rejected products",
+      SAMPLES: "CONTRAMUESTRAS - Product samples",
+      RETURNS: "DEVOLUCIONES - Product returns",
+      DAMAGED: "Damaged products",
+      EXPIRED: "Expired products"
+    };
+
+    return {
+      success: true,
+      message: `Cell quality purpose changed from ${purposeMapping[currentCell.cell_role]} to ${purposeMapping[newCellRole]}`,
+      data: {
+        ...updatedCell,
+        quality_purpose: purposeMapping[newCellRole],
+        cell_reference: `${updatedCell.row}.${String(updatedCell.bay).padStart(2, '0')}.${String(updatedCell.position).padStart(2, '0')}`,
+        change_log: {
+          changed_from: currentCell.cell_role,
+          changed_to: newCellRole,
+          changed_by: userId,
+          changed_at: new Date(),
+          change_reason: changeReason || 'No reason provided',
+          warnings: warnings
+        }
+      },
+      changed: true,
+      warnings: warnings
+    };
+
+  } catch (error) {
+    console.error("Error in changeCellQualityPurpose service:", error);
+    throw new Error(`Error changing cell quality purpose: ${error.message}`);
+  }
+}
+
+/**
+ * ✅ NEW: Get cell role change history
+ * @param {string} cellId - Cell ID
+ * @returns {Promise<Array>} - Array of role changes
+ */
+async function getCellRoleChangeHistory(cellId) {
+  try {
+    const history = await prisma.systemAuditLog.findMany({
+      where: {
+        entity_type: 'WarehouseCell',
+        entity_id: cellId,
+        action: 'CELL_ROLE_CHANGE'
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            email: true,
+            role: {
+              select: { name: true }
+            }
+          }
+        }
+      },
+      orderBy: {
+        performed_at: 'desc'
+      }
+    });
+
+    return history.map(log => ({
+      change_id: log.audit_id,
+      changed_from: log.old_values?.cell_role,
+      changed_to: log.new_values?.cell_role,
+      change_reason: log.new_values?.change_reason,
+      changed_by: {
+        user_id: log.user.id,
+        name: `${log.user.first_name} ${log.user.last_name}`,
+        email: log.user.email,
+        role: log.user.role?.name
+      },
+      changed_at: log.performed_at,
+      description: log.description,
+      warnings: log.metadata?.warnings || [],
+      had_inventory: log.metadata?.had_active_inventory || false,
+      had_assignments: log.metadata?.had_client_assignments || false
+    }));
+
+  } catch (error) {
+    console.error("Error in getCellRoleChangeHistory service:", error);
+    throw new Error(`Error fetching cell role change history: ${error.message}`);
+  }
+}
+
+/**
+ * ✅ NEW: Get cells by role for quality control management
+ * @param {string} warehouseId - Optional warehouse filter
+ * @param {string} cellRole - Optional cell role filter
+ * @returns {Promise<Object>} - Grouped cells by role
+ */
+async function getCellsByRole(warehouseId = null, cellRole = null) {
+  try {
+    const whereCondition = {
+      is_passage: false // Exclude passage cells
+    };
+
+    if (warehouseId) {
+      whereCondition.warehouse_id = warehouseId;
+    }
+
+    if (cellRole) {
+      whereCondition.cell_role = cellRole;
+    }
+
+    const cells = await prisma.warehouseCell.findMany({
+      where: whereCondition,
+      include: {
+        warehouse: {
+          select: {
+            warehouse_id: true,
+            name: true,
+            location: true
+          }
+        },
+        clientCellAssignments: {
+          where: { is_active: true },
+          include: {
+            client: {
+              select: {
+                client_id: true,
+                company_name: true,
+                first_names: true,
+                last_name: true,
+                client_type: true
+              }
+            }
+          }
+        },
+        _count: {
+          select: {
+            inventory: {
+              where: { 
+                status: { in: ['AVAILABLE', 'QUARANTINED', 'RESERVED'] }
+              }
+            }
+          }
+        }
+      },
+      orderBy: [
+        { warehouse_id: 'asc' },
+        { cell_role: 'asc' },
+        { row: 'asc' },
+        { bay: 'asc' },
+        { position: 'asc' }
+      ]
+    });
+
+    // Group by cell role
+    const cellsByRole = {
+      STANDARD: [],
+      REJECTED: [],
+      SAMPLES: [],
+      RETURNS: [],
+      DAMAGED: [],
+      EXPIRED: []
+    };
+
+    const cellsByWarehouse = {};
+
+    cells.forEach(cell => {
+      const cellData = {
+        ...cell,
+        cell_reference: `${cell.row}.${String(cell.bay).padStart(2, '0')}.${String(cell.position).padStart(2, '0')}`,
+        quality_purpose: {
+          STANDARD: "Regular storage",
+          REJECTED: "RECHAZADOS - Rejected products", 
+          SAMPLES: "CONTRAMUESTRAS - Product samples",
+          RETURNS: "DEVOLUCIONES - Product returns",
+          DAMAGED: "Damaged products",
+          EXPIRED: "Expired products"
+        }[cell.cell_role],
+        has_inventory: cell._count.inventory > 0,
+        has_client_assignment: cell.clientCellAssignments.length > 0,
+        client_info: cell.clientCellAssignments.length > 0 ? {
+          client_id: cell.clientCellAssignments[0].client.client_id,
+          client_name: cell.clientCellAssignments[0].client.client_type === 'JURIDICO'
+            ? cell.clientCellAssignments[0].client.company_name
+            : `${cell.clientCellAssignments[0].client.first_names} ${cell.clientCellAssignments[0].client.last_name}`,
+          client_type: cell.clientCellAssignments[0].client.client_type
+        } : null
+      };
+
+      cellsByRole[cell.cell_role].push(cellData);
+
+      // Group by warehouse
+      if (!cellsByWarehouse[cell.warehouse_id]) {
+        cellsByWarehouse[cell.warehouse_id] = {
+          warehouse: cell.warehouse,
+          cells_by_role: {
+            STANDARD: [],
+            REJECTED: [],
+            SAMPLES: [],
+            RETURNS: [],
+            DAMAGED: [],
+            EXPIRED: []
+          },
+          total_cells: 0
+        };
+      }
+
+      cellsByWarehouse[cell.warehouse_id].cells_by_role[cell.cell_role].push(cellData);
+      cellsByWarehouse[cell.warehouse_id].total_cells++;
+    });
+
+    return {
+      total_cells: cells.length,
+      cells_by_role: cellsByRole,
+      cells_by_warehouse: cellsByWarehouse,
+      summary: {
+        standard_cells: cellsByRole.STANDARD.length,
+        rejected_cells: cellsByRole.REJECTED.length,
+        samples_cells: cellsByRole.SAMPLES.length,
+        returns_cells: cellsByRole.RETURNS.length,
+        damaged_cells: cellsByRole.DAMAGED.length,
+        expired_cells: cellsByRole.EXPIRED.length,
+        total_special_cells: cellsByRole.REJECTED.length + cellsByRole.SAMPLES.length + 
+                            cellsByRole.RETURNS.length + cellsByRole.DAMAGED.length + cellsByRole.EXPIRED.length
+      }
+    };
+
+  } catch (error) {
+    console.error("Error in getCellsByRole service:", error);
+    throw new Error(`Error fetching cells by role: ${error.message}`);
+  }
+}
+
+module.exports = { 
+  assignPallets, 
+  getAllWarehouseCells, 
+  fetchWarehouses,
+  changeCellQualityPurpose,
+  getCellRoleChangeHistory,
+  getCellsByRole
+};

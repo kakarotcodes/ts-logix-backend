@@ -1,4 +1,14 @@
-const { assignPallets, getAllWarehouseCells, fetchWarehouses } = require("./warehouse.service");
+const { 
+  assignPallets, 
+  getAllWarehouseCells, 
+  fetchWarehouses,
+  changeCellQualityPurpose,
+  getCellRoleChangeHistory,
+  getCellsByRole
+} = require("./warehouse.service");
+
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
 
 async function allocatePallets(req, res) {
   const { warehouse_id, row, palletCount, product_id } = req.body;
@@ -129,4 +139,182 @@ async function listWarehouses(req, res) {
   }
 }
 
-module.exports = { allocatePallets, listWarehouseCells, listWarehouses };
+/**
+ * ✅ SIMPLIFIED: Change cell role (ADMIN only)
+ */
+async function changeCellRole(req, res) {
+  try {
+    const { cellId } = req.params;
+    const { new_cell_role } = req.body;
+    const userRole = req.user?.role;
+    const userId = req.user?.id;
+
+    // Only ADMIN can change cell roles
+    if (userRole !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        message: "Only ADMIN users can change cell roles"
+      });
+    }
+
+    if (!cellId) {
+      return res.status(400).json({
+        success: false,
+        message: "Cell ID is required"
+      });
+    }
+
+    if (!new_cell_role) {
+      return res.status(400).json({
+        success: false,
+        message: "New cell role is required"
+      });
+    }
+
+    // Validate cell role
+    const validRoles = ['STANDARD', 'REJECTED', 'SAMPLES', 'RETURNS'];
+    if (!validRoles.includes(new_cell_role)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid cell role. Must be one of: ${validRoles.join(', ')}`
+      });
+    }
+
+    // Get current cell
+    const currentCell = await prisma.warehouseCell.findUnique({
+      where: { id: cellId }
+    });
+
+    if (!currentCell) {
+      return res.status(404).json({
+        success: false,
+        message: "Cell not found"
+      });
+    }
+
+    // Update cell role
+    const updatedCell = await prisma.warehouseCell.update({
+      where: { id: cellId },
+      data: { cell_role: new_cell_role }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Cell role changed from ${currentCell.cell_role} to ${new_cell_role}`,
+      data: {
+        cell_id: updatedCell.id,
+        cell_reference: `${updatedCell.row}.${String(updatedCell.bay).padStart(2, '0')}.${String(updatedCell.position).padStart(2, '0')}`,
+        old_role: currentCell.cell_role,
+        new_role: updatedCell.cell_role
+      }
+    });
+
+  } catch (error) {
+    console.error("Error in changeCellRole controller:", error);
+    
+    return res.status(500).json({
+      success: false,
+      message: "Failed to change cell role",
+      error: error.message
+    });
+  }
+}
+
+/**
+ * ✅ NEW: Get available cell roles for dropdown
+ */
+async function getCellRoles(req, res) {
+  try {
+    const cellRoles = [
+      { value: 'STANDARD', label: 'Standard Storage' },
+      { value: 'REJECTED', label: 'Rejected' },
+      { value: 'SAMPLES', label: 'Samples' },
+      { value: 'RETURNS', label: 'Returns' }
+    ];
+
+    return res.status(200).json({
+      success: true,
+      message: "Cell roles retrieved successfully",
+      data: cellRoles
+    });
+  } catch (error) {
+    console.error("Error in getCellRoles controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve cell roles",
+      error: error.message
+    });
+  }
+}
+
+/**
+ * ✅ NEW: Get cell role change history
+ */
+async function getCellHistory(req, res) {
+  try {
+    const { cellId } = req.params;
+
+    if (!cellId) {
+      return res.status(400).json({
+        success: false,
+        message: "Cell ID is required"
+      });
+    }
+
+    const history = await getCellRoleChangeHistory(cellId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Cell role change history retrieved successfully",
+      data: history,
+      count: history.length
+    });
+
+  } catch (error) {
+    console.error("Error in getCellHistory controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve cell role change history",
+      error: error.message
+    });
+  }
+}
+
+/**
+ * ✅ NEW: Get cells grouped by role for quality control management
+ */
+async function getCellsByQualityRole(req, res) {
+  try {
+    const { warehouse_id, cell_role } = req.query;
+
+    const result = await getCellsByRole(warehouse_id, cell_role);
+
+    return res.status(200).json({
+      success: true,
+      message: "Cells by role retrieved successfully",
+      data: result,
+      filters_applied: {
+        warehouse_id: warehouse_id || 'all',
+        cell_role: cell_role || 'all'
+      }
+    });
+
+  } catch (error) {
+    console.error("Error in getCellsByQualityRole controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve cells by role",
+      error: error.message
+    });
+  }
+}
+
+module.exports = { 
+  allocatePallets, 
+  listWarehouseCells, 
+  listWarehouses,
+  changeCellRole,
+  getCellRoles,
+  getCellHistory,
+  getCellsByQualityRole
+};

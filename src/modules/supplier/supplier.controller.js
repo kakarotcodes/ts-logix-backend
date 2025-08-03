@@ -144,7 +144,11 @@ async function updateSupplier(req, res) {
       });
     }
     
-    const updatedSupplier = await supplierService.updateSupplier(id, supplierData);
+    // ✅ NEW: Pass user context for permission checking
+    const userRole = req.user?.role;
+    const userId = req.user?.id;
+    
+    const updatedSupplier = await supplierService.updateSupplier(id, supplierData, userRole, userId);
     
     return res.status(200).json({
       success: true,
@@ -158,6 +162,14 @@ async function updateSupplier(req, res) {
       return res.status(404).json({
         success: false,
         message: "Supplier not found",
+        error: error.message
+      });
+    }
+    
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({
+        success: false,
+        message: "You don't have permission to edit this supplier",
         error: error.message
       });
     }
@@ -240,6 +252,26 @@ async function getSupplierCategories(req, res) {
     return res.status(500).json({
       success: false,
       message: "Failed to retrieve supplier categories",
+      error: error.message
+    });
+  }
+}
+
+// ✅ NEW: Get next supplier code
+async function getNextSupplierCode(req, res) {
+  try {
+    const codeInfo = await supplierService.getNextSupplierCode();
+    
+    return res.status(200).json({
+      success: true,
+      message: "Next supplier code generated successfully",
+      data: codeInfo
+    });
+  } catch (error) {
+    console.error("Error in getNextSupplierCode controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate next supplier code",
       error: error.message
     });
   }
@@ -385,6 +417,63 @@ async function getAvailableSuppliersForClient(req, res) {
   }
 }
 
+// ✅ NEW: Get client by ID with all details
+async function getClientById(req, res) {
+  try {
+    const { client_id } = req.params;
+    const userRole = req.user?.role;
+    const userId = req.user?.id;
+    
+    if (!client_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Client ID is required"
+      });
+    }
+    
+    const client = await supplierService.getClientById(client_id, userRole, userId);
+    
+    return res.status(200).json({
+      success: true,
+      message: "Client information retrieved successfully",
+      data: client,
+      meta: {
+        user_role: userRole,
+        user_id: userId,
+        entry_orders_count: client.entryOrders?.length || 0,
+        departure_orders_count: client.departureOrders?.length || 0,
+        supplier_assignments_count: client.supplierAssignments?.length || 0,
+        product_assignments_count: client.productAssignments?.length || 0,
+        cell_assignments_count: client.cellAssignments?.length || 0
+      }
+    });
+  } catch (error) {
+    console.error("Error in getClientById controller:", error);
+    
+    if (error.message.includes("Client not found")) {
+      return res.status(404).json({
+        success: false,
+        message: "Client not found",
+        error: error.message
+      });
+    }
+    
+    if (error.message.includes("You can only access")) {
+      return res.status(403).json({
+        success: false,
+        message: "You don't have permission to access this client's information",
+        error: error.message
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve client information",
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   createSupplier,
   getAllSuppliers,
@@ -396,9 +485,15 @@ module.exports = {
   // ✅ NEW: Category system controller
   getSupplierCategories,
   
+  // ✅ NEW: Supplier code generation
+  getNextSupplierCode,
+  
   // ✅ NEW: Client-supplier assignment management
   createClientSupplierAssignments,
   getClientSupplierAssignments,
   removeClientSupplierAssignment,
   getAvailableSuppliersForClient,
+  
+  // ✅ NEW: Client information
+  getClientById,
 };
