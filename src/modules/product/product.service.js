@@ -367,7 +367,7 @@ const deleteProduct = async (id) => {
 
 // ✅ NEW: Get product categories from database
 const getProductCategories = async () => {
-  return prisma.productCategory.findMany({
+  const categories = await prisma.productCategory.findMany({
     select: {
       category_id: true,
       name: true,
@@ -382,6 +382,15 @@ const getProductCategories = async () => {
     },
     orderBy: { name: 'asc' }
   });
+  
+  // Move "Otros" category to the end
+  const otrosIndex = categories.findIndex(cat => cat.name.toLowerCase() === 'otros');
+  if (otrosIndex > -1) {
+    const otrosCategory = categories.splice(otrosIndex, 1)[0];
+    categories.push(otrosCategory);
+  }
+  
+  return categories;
 };
 
 // ✅ NEW: Create product category
