@@ -25,8 +25,8 @@ enum ClientType {
 
 // ✅ NEW: Company Type enum for juridical clients
 enum CompanyType {
-  PRIVADO    // Empresa Privada
-  PUBLICO    // Empresa Pública
+  PRIVADA    // Empresa Privada
+  PUBLICA   // Empresa Pública
 }
 
 // ✅ NEW: Establishment Type enum for commercial clients
