@@ -105,7 +105,7 @@ async function createBaseLookupTables() {
         { name: "Dispositivos Médicos", description: "Medical devices and equipment" },
         { name: "Productos Farmacéuticos", description: "Pharmaceutical products and medications" },
         { name: "Productos Sanitarios", description: "Sanitary and hygiene products" },
-        { name: "Otro", description: "Other products and miscellaneous items" },
+        { name: "Otros", description: "Other products and miscellaneous items" },
       ],
       skipDuplicates: true,
     });
@@ -116,7 +116,7 @@ async function createBaseLookupTables() {
     const dispositivosMedicos = categories.find(c => c.name === "Dispositivos Médicos");
     const productosFarmaceuticos = categories.find(c => c.name === "Productos Farmacéuticos");
     const productosSanitarios = categories.find(c => c.name === "Productos Sanitarios");
-    const otro = categories.find(c => c.name === "Otro");
+    const otro = categories.find(c => c.name === "Otros");
 
     // ✅ NEW: Product Subcategories1
     console.log("Creating product subcategories1...");
@@ -374,8 +374,6 @@ async function createBaseLookupTables() {
         { range: "15°C - 30°C", min_celsius: 15, max_celsius: 30 },
         { range: "15°C - 25°C", min_celsius: 15, max_celsius: 25 },
         { range: "2°C - 8°C", min_celsius: 2, max_celsius: 8 },
-        { range: "Ambiente", min_celsius: null, max_celsius: null },
-        { range: "-18°C - -15°C", min_celsius: -18, max_celsius: -15 },
       ],
       skipDuplicates: true,
     });
