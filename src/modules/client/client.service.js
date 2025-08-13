@@ -1805,8 +1805,8 @@ async function getClientFormFields() {
       ]),
       // Get enum values for company types
       Promise.resolve([
-        { value: "PRIVADO", label: "Privado" },
-        { value: "PUBLICO", label: "Público" }
+        { value: "PRIVADA", label: "Privada" },
+        { value: "PUBLICA", label: "Pública" }
       ]),
       // Get enum values for establishment types
       Promise.resolve([
@@ -1839,7 +1839,7 @@ async function getClientFormFields() {
         cell_phone: "Mobile/cell phone number (REQUIRED)",
         company_name: "Company name (REQUIRED for juridical clients)",
         ruc: "RUC (Registro Único de Contribuyente) - 11 digits (REQUIRED for juridical clients)",
-        company_type: "PRIVADO or PUBLICO company (REQUIRED for juridical clients)",
+        company_type: "PRIVADA or PUBLICA company (REQUIRED for juridical clients)",
         establishment_type: "Type of juridical establishment (REQUIRED for juridical clients)",
         first_names: "First and middle names (REQUIRED for natural clients)",
         last_name: "Last name/surname (REQUIRED for natural clients)",
