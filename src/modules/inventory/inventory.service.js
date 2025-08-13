@@ -753,7 +753,7 @@ async function getClientAssignedCells(warehouseId, userId) {
       client = await prisma.client.findFirst({
         where: {
           active_state: {
-            name: "Active"
+            name: "Activo"
           }
         },
         select: { client_id: true }

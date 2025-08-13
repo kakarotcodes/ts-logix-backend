@@ -385,10 +385,10 @@ async function createBaseLookupTables() {
     console.log("Creating active states...");
     await prisma.activeState.createMany({
       data: [
-        { name: "Active" },
-        { name: "Inactive" },
-        { name: "Pending" },
-        { name: "Suspended" },
+        { name: "Activo" },
+        { name: "Inactivo" },
+        { name: "Pendiente" },
+        { name: "Suspendido" },
       ],
       skipDuplicates: true,
     });
@@ -528,7 +528,7 @@ async function createUsersAndOrganization() {
     const pharmacistRole = roles.find(r => r.name === "PHARMACIST").role_id;
     const warehouseAssistantRole = roles.find(r => r.name === "WAREHOUSE_ASSISTANT").role_id;
     const adminRole = roles.find(r => r.name === "ADMIN").role_id;
-    const activeState = activeStates.find(s => s.name === "Active").state_id;
+    const activeState = activeStates.find(s => s.name === "Activo").state_id;
     const mainOrg = createdOrgs[0].organisation_id;
     
     // Create seed users with visible passwords
@@ -703,8 +703,8 @@ async function createClients() {
     console.log("Creating clients with warehouse incharge ownership and auto-generated credentials...");
     
     const activeStates = await prisma.activeState.findMany();
-    const activeState = activeStates.find(s => s.name === "Active").state_id;
-    const inactiveState = activeStates.find(s => s.name === "Inactive").state_id;
+    const activeState = activeStates.find(s => s.name === "Activo").state_id;
+    const inactiveState = activeStates.find(s => s.name === "Inactivo").state_id;
     
     // Get warehouse incharge users (they will create the clients)
     const warehouseIncharges = await prisma.user.findMany({

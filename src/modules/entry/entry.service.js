@@ -436,7 +436,7 @@ async function getEntryFormFields(userRole = null, userId = null) {
     // For non-CLIENT users, get all users
     usersPromise = prisma.user.findMany({
       where: {
-        active_state: { name: "Active" },
+        active_state: { name: "Activo" },
       },
       select: {
         id: true,

@@ -501,7 +501,7 @@ async function getClientStatistics(req, res) {
       prisma.client.count({ where: { client_type: "NATURAL" } }),
       prisma.client.count({ 
         where: { 
-          active_state: { name: "Active" }
+          active_state: { name: "Activo" }
         }
       }),
       prisma.client.count({

@@ -108,7 +108,7 @@ async function getDepartureFormFields(userRole = null, userId = null) {
       // For non-CLIENT users (ADMIN, WAREHOUSE_INCHARGE, etc.), get all users
       usersPromise = prisma.user.findMany({
         where: {
-          active_state: { name: "Active" },
+          active_state: { name: "Activo" },
         },
         select: {
           id: true,
