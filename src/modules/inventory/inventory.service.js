@@ -1340,7 +1340,7 @@ async function getInventorySummary(filters = {}) {
         }
 
         // Get movement logs for this inventory item
-        const movementLogs = await prisma.inventoryLog.findMany({
+        const rawMovementLogs = await prisma.inventoryLog.findMany({
           where: {
             OR: [
               { product_id: item.product.product_id, cell_id: item.cell.id },
@@ -1413,8 +1413,19 @@ async function getInventorySummary(filters = {}) {
             },
           },
           orderBy: { timestamp: 'desc' },
-          take: 20, // Limit to last 20 movements
+          take: 40, // Fetch more to account for potential duplicates before deduplication
         });
+
+        // ✅ FIX: Deduplicate logs by log_id (the OR condition can match the same record multiple times)
+        const logMap = new Map();
+        rawMovementLogs.forEach(log => {
+          if (!logMap.has(log.log_id)) {
+            logMap.set(log.log_id, log);
+          }
+        });
+        const movementLogs = Array.from(logMap.values())
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+          .slice(0, 20); // Limit to last 20 movements after deduplication
 
         // Calculate movement summary
         const movementSummary = {
@@ -1641,8 +1652,17 @@ async function getInventorySummary(filters = {}) {
     }
   });
 
+  // ✅ FIX: Final deduplication at consolidated level (same log can appear in multiple inventory items)
+  const finalLogMap = new Map();
+  consolidatedMovements.forEach(movement => {
+    if (!finalLogMap.has(movement.log_id)) {
+      finalLogMap.set(movement.log_id, movement);
+    }
+  });
+  const deduplicatedMovements = Array.from(finalLogMap.values());
+
   // Sort by timestamp (newest first)
-  consolidatedMovements.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  deduplicatedMovements.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   // ✅ SECTION 5: RETURN SIMPLIFIED SUMMARY
   const summaryStats = {
@@ -1654,18 +1674,18 @@ async function getInventorySummary(filters = {}) {
       warehouses: [...new Set(processedCurrentInventory.map(item => item.warehouse.warehouse_id))].length,
     },
     movement_logs: {
-      total_movements: consolidatedMovements.length,
-      total_entries: consolidatedMovements.filter(m => m.movement_type === 'ENTRY').length,
-      total_departures: consolidatedMovements.filter(m => m.movement_type === 'DEPARTURE').length,
-      total_adjustments: consolidatedMovements.filter(m => m.movement_type === 'ADJUSTMENT').length,
-      unique_products: [...new Set(consolidatedMovements.map(m => m.product_id))].length,
+      total_movements: deduplicatedMovements.length,
+      total_entries: deduplicatedMovements.filter(m => m.movement_type === 'ENTRY').length,
+      total_departures: deduplicatedMovements.filter(m => m.movement_type === 'DEPARTURE').length,
+      total_adjustments: deduplicatedMovements.filter(m => m.movement_type === 'ADJUSTMENT').length,
+      unique_products: [...new Set(deduplicatedMovements.map(m => m.product_id))].length,
     }
   };
 
   return {
     success: true,
     summary_stats: summaryStats,
-    movement_logs: consolidatedMovements,
+    movement_logs: deduplicatedMovements,
     filters_applied: {
       warehouse_id: warehouse_id || 'ALL',
       product_id: product_id || 'ALL', 
