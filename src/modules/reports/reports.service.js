@@ -107,7 +107,7 @@ async function generateWarehouseReport(filters = {}, userContext = {}) {
             } : {},
             // Filter by client assignments to products
             filters.customer_name ? {
-              entryOrderProducts: {
+              products: {
                 some: {
                   product: {
                     clientAssignments: {
@@ -652,7 +652,7 @@ async function generateProductCategoryReport(filters, userContext) {
             } : {},
             // Filter by client assignments to products
             filters.customer_name ? {
-              entryOrderProducts: {
+              products: {
                 some: {
                   product: {
                     clientAssignments: {
@@ -922,7 +922,7 @@ async function generateProductWiseReport(filters, userContext) {
           } : {},
           // Filter by client assignments to products  
           filters.customer_name ? {
-            entryOrderProducts: {
+            products: {
               some: {
                 product: {
                   clientAssignments: {
@@ -1627,25 +1627,30 @@ async function generateCardexReport(filters, userContext) {
 
       const quantity = departureProduct.dispatched_quantity || departureProduct.requested_quantity || 0;
       
-      // ✅ CORRECT: Calculate financial value based on original entry order insured_value
+      // ✅ Calculate financial value using smart estimation from entry orders
       let financialValue = 0;
-      if (departureProduct.departureAllocations && departureProduct.departureAllocations.length > 0) {
-        // Trace back to original entry order product's insured_value
-        departureProduct.departureAllocations.forEach(allocation => {
-          if (allocation.source_allocation?.entry_order_product) {
-            const entryProduct = allocation.source_allocation.entry_order_product;
-            const originalInsuredValue = parseFloat(entryProduct.insured_value || 0);
-            const originalQuantity = entryProduct.inventory_quantity || 1;
-            const allocatedQuantity = allocation.allocated_quantity || 0;
-            
-            // Calculate proportional financial value based on original insured_value
-            const unitValue = originalInsuredValue / originalQuantity;
-            financialValue += unitValue * allocatedQuantity;
-          }
+      
+      // Find all entry orders for the same product to calculate average unit cost
+      const productEntryOrders = allEntryOrderProducts.filter(eop => 
+        eop.product_id === departureProduct.product_id
+      );
+      
+      if (productEntryOrders.length > 0) {
+        // Calculate average unit cost from all entry orders for this product
+        let totalEntryValue = 0;
+        let totalEntryQuantity = 0;
+        
+        productEntryOrders.forEach(eop => {
+          const entryValue = parseFloat(eop.insured_value || 0);
+          const entryQuantity = eop.inventory_quantity || 0;
+          totalEntryValue += entryValue;
+          totalEntryQuantity += entryQuantity;
         });
-      } else {
-        // Fallback: If no allocations found, use departure order's values
-        financialValue = parseFloat(departureProduct.unit_price || departureProduct.total_value || 0);
+        
+        if (totalEntryQuantity > 0) {
+          const averageUnitCost = totalEntryValue / totalEntryQuantity;
+          financialValue = averageUnitCost * quantity;
+        }
       }
 
       // Determine if this affects opening balance or stock out based on report date range
