@@ -890,13 +890,91 @@ async function getClientAssignedCells(warehouseId, userId) {
  * ✅ ENHANCED: Get comprehensive inventory summary including current inventory + dispatch history
  */
 async function getInventorySummary(filters = {}) {
-  const { warehouse_id, product_id, status, include_logs = true, include_dispatch_history = true } = filters;
+  const { 
+    warehouse_id, 
+    product_id, 
+    product_name, 
+    product_code,
+    client_name,
+    status, 
+    include_logs = true, 
+    include_dispatch_history = true 
+  } = filters;
 
   // ✅ SECTION 1: CURRENT INVENTORY (existing functionality)
   const inventoryWhere = {};
   if (warehouse_id) inventoryWhere.warehouse_id = warehouse_id;
   if (product_id) inventoryWhere.product_id = product_id;
   if (status) inventoryWhere.status = status;
+  
+  // ✅ NEW: Product search filters
+  if (product_name || product_code) {
+    inventoryWhere.product = {};
+    if (product_name) {
+      inventoryWhere.product.name = {
+        contains: product_name,
+        mode: 'insensitive'
+      };
+    }
+    if (product_code) {
+      inventoryWhere.product.product_code = {
+        contains: product_code,
+        mode: 'insensitive'
+      };
+    }
+  }
+  
+  // ✅ NEW: Client search filter (search through allocation -> entry_order -> creator)
+  if (client_name) {
+    inventoryWhere.allocation = {
+      entry_order: {
+        creator: {
+          OR: [
+            {
+              clientUserAccounts: {
+                some: {
+                  client: {
+                    OR: [
+                      {
+                        company_name: {
+                          contains: client_name,
+                          mode: 'insensitive'
+                        }
+                      },
+                      {
+                        first_names: {
+                          contains: client_name,
+                          mode: 'insensitive'
+                        }
+                      },
+                      {
+                        last_name: {
+                          contains: client_name,
+                          mode: 'insensitive'
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              first_name: {
+                contains: client_name,
+                mode: 'insensitive'
+              }
+            },
+            {
+              last_name: {
+                contains: client_name,
+                mode: 'insensitive'
+              }
+            }
+          ]
+        }
+      }
+    };
+  }
 
   const currentInventory = await prisma.inventory.findMany({
     where: inventoryWhere,
@@ -1316,9 +1394,23 @@ async function getInventorySummary(filters = {}) {
             // User information
             user_id: true,
             
-            // Location information
+            // Location information (historical)
             warehouse_id: true,
             cell_id: true,
+            warehouse: {
+              select: {
+                warehouse_id: true,
+                name: true,
+              }
+            },
+            cell: {
+              select: {
+                id: true,
+                row: true,
+                bay: true,
+                position: true,
+              }
+            },
           },
           orderBy: { timestamp: 'desc' },
           take: 20, // Limit to last 20 movements
@@ -1446,7 +1538,40 @@ async function getInventorySummary(filters = {}) {
   processedCurrentInventory.forEach(item => {
     if (item.movement_logs && item.movement_logs.length > 0) {
       item.movement_logs.forEach(log => {
-        // Create movement entry with order-specific mapping
+        // Calculate historical state at the time of this movement
+        // For quantity and weight, we need to calculate backward from current state
+        let historicalQuantity = item.current_quantity;
+        let historicalWeight = parseFloat(item.current_weight) || 0;
+        
+        // Calculate the state before later movements by adding back future changes
+        const laterMovements = item.movement_logs.filter(laterLog => 
+          new Date(laterLog.timestamp) > new Date(log.timestamp)
+        );
+        
+        for (const laterLog of laterMovements) {
+          historicalQuantity -= (laterLog.quantity_change || 0);
+          historicalWeight -= parseFloat(laterLog.weight_change || 0);
+        }
+        
+        // For quality status: determine based on movement type and business rules
+        let historicalQualityStatus;
+        if (log.movement_type === 'ENTRY') {
+          // All entries start in quarantine
+          historicalQualityStatus = 'CUARENTENA';
+        } else if (log.movement_type === 'TRANSFER' || log.movement_type === 'ADJUSTMENT') {
+          // For transfers/adjustments, this represents a quality control transition
+          // The transition shows the RESULT status (where it went TO)
+          // Use the current allocation quality status as this represents the final state
+          historicalQualityStatus = item.allocation.quality_status;
+        } else if (log.movement_type === 'DEPARTURE') {
+          // Departures can only happen from approved items
+          historicalQualityStatus = 'APROBADO';
+        } else {
+          // Fallback to current status
+          historicalQualityStatus = item.allocation.quality_status;
+        }
+        
+        // Create movement entry with historical data
         const movement = {
           log_id: log.log_id,
           timestamp: log.timestamp,
@@ -1461,14 +1586,16 @@ async function getInventorySummary(filters = {}) {
           manufacturer: item.product.manufacturer,
           lot_series: item.allocation.entry_order_product.lot_series,
           
-          // Location information
-          warehouse_name: item.warehouse.name,
-          cell_reference: item.cell_reference,
+          // Historical location information (from the log)
+          warehouse_name: log.warehouse?.name || item.warehouse.name,
+          cell_reference: log.cell ? 
+            `${log.cell.row}.${String(log.cell.bay).padStart(2, '0')}.${String(log.cell.position).padStart(2, '0')}` : 
+            item.cell_reference,
           
-          // Current status
-          current_quantity: item.current_quantity,
-          current_weight: parseFloat(item.current_weight) || 0,
-          quality_status: item.allocation.quality_status,
+          // Historical status (calculated based on business rules)
+          current_quantity: historicalQuantity,
+          current_weight: historicalWeight,
+          quality_status: historicalQualityStatus,
           
           // Client information (from entry order)
           client_name: item.client_info?.company_name || `${item.client_info?.first_names || ''} ${item.client_info?.last_name || ''}`.trim(),

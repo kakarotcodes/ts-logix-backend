@@ -12,6 +12,7 @@ router.get("/entry-order/:entryOrderId/products", controller.getEntryOrderProduc
 router.post("/assign-product", controller.assignProductToCell);
 
 // Get inventory summary with filters
+// Query params: warehouse_id, product_id, product_name, product_code, client_name, status, include_logs, include_dispatch_history
 router.get("/summary", controller.getInventorySummary);
 
 // Get available cells for a specific warehouse
