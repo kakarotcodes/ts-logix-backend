@@ -1,5 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
 const eventLogger = require("../../utils/eventLogger");
+const emailService = require("../../utils/emailService");
 const bcrypt = require("bcrypt");
 const prisma = new PrismaClient();
 
@@ -10,9 +11,7 @@ async function generateNextClientCode() {
     const latestClient = await prisma.client.findFirst({
       where: {
         client_code: {
-          startsWith: 'C',
-          // Regex to match C followed by digits
-          regex: '^C\\d+$'
+          startsWith: 'C'
         }
       },
       select: { client_code: true },
@@ -658,6 +657,84 @@ async function createClient(clientData, cellAssignmentData = {}) {
     }, {
       timeout: 30000 // Increase timeout for large cell assignments
     });
+
+    // ✅ NEW: Send client onboarding email notification
+    try {
+      console.log(`📧 Sending onboarding email to ${result.email}...`);
+
+      const emailResult = await emailService.sendClientOnboardingEmail(
+        result,
+        {
+          username: autoUsername,
+          password: autoPassword
+        }
+      );
+
+      if (emailResult.success) {
+        console.log(`✅ Onboarding email sent successfully to ${result.email}`);
+        result._emailNotification = {
+          sent: true,
+          messageId: emailResult.messageId,
+          note: "Client onboarding email sent successfully"
+        };
+      } else {
+        console.warn(`⚠️ Failed to send onboarding email to ${result.email}:`, emailResult.error);
+        result._emailNotification = {
+          sent: false,
+          error: emailResult.error,
+          note: "Email notification failed - client creation successful but email not sent"
+        };
+      }
+    } catch (emailError) {
+      console.warn(`⚠️ Email service error for client ${result.client_id}:`, emailError.message);
+      result._emailNotification = {
+        sent: false,
+        error: emailError.message,
+        note: "Email service error - client creation successful but email not sent"
+      };
+    }
+
+    // ✅ NEW: Send admin notification email
+    try {
+      console.log(`📧 Sending admin notification for new client ${result.client_id}...`);
+
+      const creator = await prisma.user.findUnique({
+        where: { id: cellAssignmentData.assigned_by },
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          email: true
+        }
+      });
+
+      if (creator) {
+        const adminEmailResult = await emailService.sendAdminNotificationEmail(result, creator);
+
+        if (adminEmailResult.success) {
+          console.log(`✅ Admin notification sent for client ${result.client_id}`);
+          result._adminNotification = {
+            sent: true,
+            adminEmailCount: adminEmailResult.adminEmailCount,
+            note: "Admin notification email sent successfully"
+          };
+        } else {
+          console.warn(`⚠️ Failed to send admin notification for client ${result.client_id}:`, adminEmailResult.error);
+          result._adminNotification = {
+            sent: false,
+            error: adminEmailResult.error,
+            note: "Admin notification failed"
+          };
+        }
+      }
+    } catch (adminEmailError) {
+      console.warn(`⚠️ Admin email service error for client ${result.client_id}:`, adminEmailError.message);
+      result._adminNotification = {
+        sent: false,
+        error: adminEmailError.message,
+        note: "Admin email service error"
+      };
+    }
 
     return result;
   } catch (error) {

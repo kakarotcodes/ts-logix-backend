@@ -1,4 +1,5 @@
-const prisma = require("@/db");
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
 
 /**
  * Generate Master Report with complete transaction flow (entry → dispatch)
@@ -15,12 +16,14 @@ async function generateMasterReport(filters, userContext) {
     const transactions = await prisma.departureAllocation.findMany({
       where: whereConditions,
       include: {
-        // Inventory allocation links to entry
-        inventory_allocation: {
+        // Source allocation links to entry
+        source_allocation: {
           include: {
             // Entry order product details
             entry_order_product: {
               include: {
+                // Supplier for this product
+                supplier: true,
                 // Product master data
                 product: {
                   include: {
@@ -32,10 +35,7 @@ async function generateMasterReport(filters, userContext) {
                 // Entry order details
                 entry_order: {
                   include: {
-                    supplier: true,
-                    client: true,
-                    customer: true,
-                    created_by: {
+                    creator: {
                       select: {
                         id: true,
                         first_name: true,
@@ -63,7 +63,7 @@ async function generateMasterReport(filters, userContext) {
               include: {
                 client: true,
                 customer: true,
-                approved_by: {
+                reviewer: {
                   select: {
                     id: true,
                     first_name: true,
@@ -71,7 +71,7 @@ async function generateMasterReport(filters, userContext) {
                     email: true
                   }
                 },
-                created_by: {
+                creator: {
                   select: {
                     id: true,
                     first_name: true,
@@ -87,7 +87,7 @@ async function generateMasterReport(filters, userContext) {
       },
       orderBy: [
         { departure_order_product: { departure_order: { departure_date_time: 'desc' } } },
-        { inventory_allocation: { entry_order_product: { entry_order: { entry_date_time: 'desc' } } } }
+        { source_allocation: { entry_order_product: { entry_order: { entry_date_time: 'desc' } } } }
       ]
     });
 
@@ -147,7 +147,7 @@ function buildWhereConditions(filters, userContext) {
 
     // Apply date filter to both entry and dispatch dates based on filter type
     if (filters.date_filter_type === 'entry') {
-      whereConditions.inventory_allocation = {
+      whereConditions.source_allocation = {
         entry_order_product: {
           entry_order: {
             entry_date_time: dateFilter
@@ -180,11 +180,11 @@ function buildWhereConditions(filters, userContext) {
       productFilter.product_code = { contains: filters.product_code, mode: 'insensitive' };
     }
 
-    if (!whereConditions.inventory_allocation) {
-      whereConditions.inventory_allocation = {};
+    if (!whereConditions.source_allocation) {
+      whereConditions.source_allocation = {};
     }
-    whereConditions.inventory_allocation.entry_order_product = {
-      ...whereConditions.inventory_allocation.entry_order_product,
+    whereConditions.source_allocation.entry_order_product = {
+      ...whereConditions.source_allocation.entry_order_product,
       product: productFilter
     };
   }
@@ -226,14 +226,14 @@ function buildWhereConditions(filters, userContext) {
       supplierFilter.supplier_code = { contains: filters.supplier_code, mode: 'insensitive' };
     }
 
-    if (!whereConditions.inventory_allocation) {
-      whereConditions.inventory_allocation = {};
+    if (!whereConditions.source_allocation) {
+      whereConditions.source_allocation = {};
     }
-    if (!whereConditions.inventory_allocation.entry_order_product) {
-      whereConditions.inventory_allocation.entry_order_product = {};
+    if (!whereConditions.source_allocation.entry_order_product) {
+      whereConditions.source_allocation.entry_order_product = {};
     }
-    whereConditions.inventory_allocation.entry_order_product.entry_order = {
-      ...whereConditions.inventory_allocation.entry_order_product.entry_order,
+    whereConditions.source_allocation.entry_order_product.entry_order = {
+      ...whereConditions.source_allocation.entry_order_product.entry_order,
       supplier: supplierFilter
     };
   }
@@ -243,7 +243,7 @@ function buildWhereConditions(filters, userContext) {
     const clientFilter = {
       OR: [
         {
-          inventory_allocation: {
+          source_allocation: {
             entry_order_product: {
               entry_order: {
                 client_id: userContext.userId
@@ -252,7 +252,7 @@ function buildWhereConditions(filters, userContext) {
           }
         },
         {
-          inventory_allocation: {
+          source_allocation: {
             entry_order_product: {
               entry_order: {
                 customer_id: userContext.userId
@@ -291,7 +291,7 @@ async function transformToMasterReport(transactions, unallocatedInventory = []) 
 
   // Process dispatched transactions
   for (const transaction of transactions) {
-    const invAllocation = transaction.inventory_allocation;
+    const invAllocation = transaction.source_allocation;
     const entryProduct = invAllocation?.entry_order_product;
     const entryOrder = entryProduct?.entry_order;
     const depProduct = transaction.departure_order_product;

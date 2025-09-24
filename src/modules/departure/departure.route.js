@@ -102,4 +102,8 @@ router.post("/dispatch-approved-order", upload.array('documents', 10), departure
 router.get("/departure-orders/:departureOrderId/products/:productId/recalculated-fifo", departureController.getRecalculatedFifoInventoryForDeparture);
 router.post("/departure-orders/:departureOrderId/release-held-inventory", departureController.releaseHeldInventoryForDeparture);
 
+// ✅ NEW: Bulk departure order upload endpoints
+router.post("/bulk-upload", upload.single('file'), departureController.processBulkDepartureOrders);
+router.get("/bulk-template", departureController.generateBulkDepartureTemplate);
+
 module.exports = router;

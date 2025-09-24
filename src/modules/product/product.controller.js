@@ -973,13 +973,166 @@ async function createSubCategory2(req, res) {
   }
 }
 
+/**
+ * Generate bulk upload template
+ */
+async function getBulkUploadTemplate(req, res) {
+  try {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    // ✅ LOG: Template download access
+    await req.logEvent(
+      'PRODUCT_CREATED', // Use valid SystemAction value
+      'ProductBulkTemplate',
+      'TEMPLATE_DOWNLOAD',
+      `User downloaded bulk product upload template`,
+      null,
+      {
+        accessed_by: userId,
+        accessor_role: userRole,
+        access_timestamp: new Date().toISOString()
+      },
+      { operation_type: 'PRODUCT_MANAGEMENT', action_type: 'TEMPLATE_DOWNLOAD' }
+    );
+
+    const { processBulkProductUpload, generateProductTemplate } = require('./bulk-product.service');
+    const result = await generateProductTemplate();
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: result.error
+      });
+    }
+
+    // Set headers for Excel download
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader('Content-Length', result.buffer.length);
+
+    res.send(result.buffer);
+  } catch (error) {
+    console.error('Error generating bulk upload template:', error);
+
+    // ✅ LOG: Template download failure
+    await req.logError(error, {
+      controller: 'product',
+      action: 'getBulkUploadTemplate',
+      user_id: req.user?.id,
+      user_role: req.user?.role,
+      error_context: 'TEMPLATE_GENERATION_FAILED'
+    });
+
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Process bulk product upload
+ */
+async function processBulkUpload(req, res) {
+  try {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    // Validate file type
+    if (file.mimetype !== 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid file type. Please upload an Excel (.xlsx) file.'
+      });
+    }
+
+    // ✅ LOG: Bulk upload process started
+    await req.logEvent(
+      'PRODUCT_CREATED', // Use valid SystemAction value
+      'ProductBulkUpload',
+      'BULK_UPLOAD_START',
+      `Started bulk product upload process`,
+      null,
+      {
+        uploaded_by: userId,
+        uploader_role: userRole,
+        upload_timestamp: new Date().toISOString(),
+        file_name: file.originalname,
+        file_size: file.size
+      },
+      { operation_type: 'PRODUCT_MANAGEMENT', action_type: 'BULK_UPLOAD_START' }
+    );
+
+    const { processBulkProductUpload } = require('./bulk-product.service');
+    const result = await processBulkProductUpload(file.buffer, userId, userRole);
+
+    // ✅ LOG: Bulk upload process completed
+    await req.logEvent(
+      'PRODUCT_CREATED', // Use valid SystemAction value
+      'ProductBulkUpload',
+      'BULK_UPLOAD_COMPLETE',
+      `Completed bulk product upload: ${result.data?.successCount || 0} successful, ${result.data?.errorCount || 0} failed`,
+      null,
+      {
+        uploaded_by: userId,
+        uploader_role: userRole,
+        upload_timestamp: new Date().toISOString(),
+        file_name: file.originalname,
+        file_size: file.size,
+        success_count: result.data?.successCount || 0,
+        error_count: result.data?.errorCount || 0,
+        processing_time_ms: result.processing_time_ms,
+        business_impact: result.success ? 'PRODUCTS_ADDED_TO_CATALOG' : 'PARTIAL_PRODUCT_UPLOAD'
+      },
+      {
+        operation_type: 'PRODUCT_MANAGEMENT',
+        action_type: 'BULK_UPLOAD_COMPLETE',
+        business_impact: result.success ? 'PRODUCT_CATALOG_EXPANDED' : 'PARTIAL_CATALOG_UPDATE'
+      }
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error processing bulk upload:', error);
+
+    // ✅ LOG: Bulk upload failure
+    await req.logError(error, {
+      controller: 'product',
+      action: 'processBulkUpload',
+      file_info: {
+        name: req.file?.originalname,
+        size: req.file?.size,
+        mimetype: req.file?.mimetype
+      },
+      user_id: req.user?.id,
+      user_role: req.user?.role,
+      error_context: 'BULK_UPLOAD_FAILED'
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Bulk upload processing failed',
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   createProduct,
   getAllProducts,
   getProductById,
   updateProduct,
   deleteProduct,
-  
+
   // ✅ NEW: Category system controllers
   getProductCategories,
   createProductCategory,
@@ -987,7 +1140,11 @@ module.exports = {
   createSubCategory1,
   getSubCategories2,
   createSubCategory2,
-  
+
+  // ✅ NEW: Bulk upload controllers
+  getBulkUploadTemplate,
+  processBulkUpload,
+
   // ✅ DEPRECATED: Keep old controllers for backward compatibility
   getTemperatureRanges,
   getFormFields,

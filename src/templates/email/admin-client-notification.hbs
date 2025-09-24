@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nuevo Cliente Registrado - TSLogix</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            background-color: #f8f9fa;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .alert-box {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .alert-box h2 {
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .client-details {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 25px;
+            margin: 20px 0;
+        }
+
+        .client-details h3 {
+            color: #374151;
+            font-size: 16px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .client-details h3::before {
+            content: "👤";
+            margin-right: 10px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .detail-label {
+            font-size: 12px;
+            color: #6b7280;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .detail-value {
+            font-size: 14px;
+            color: #374151;
+            font-weight: 500;
+        }
+
+        .creator-info {
+            background-color: #e0f2fe;
+            border-left: 4px solid #0284c7;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .creator-info h4 {
+            color: #0369a1;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .action-buttons {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            margin: 8px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            transition: transform 0.2s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            color: white;
+        }
+
+        .footer {
+            background-color: #1f2937;
+            color: #d1d5db;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        @media (max-width: 600px) {
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header, .content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔔 Notificación de Administrador</h1>
+            <p>Nuevo cliente registrado en TSLogix</p>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- Alert -->
+            <div class="alert-box">
+                <h2>📋 Nuevo Cliente Registrado</h2>
+                <p>Se ha registrado un nuevo cliente en el sistema</p>
+            </div>
+
+            <!-- Client Details -->
+            <div class="client-details">
+                <h3>Información del Cliente</h3>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">Nombre/Empresa</span>
+                        <span class="detail-value">{{clientName}}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Código de Cliente</span>
+                        <span class="detail-value">{{clientCode}}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Tipo de Cliente</span>
+                        <span class="detail-value">{{clientType}}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Email</span>
+                        <span class="detail-value">{{clientEmail}}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Fecha de Registro</span>
+                        <span class="detail-value">{{createdAt}}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Creator Information -->
+            <div class="creator-info">
+                <h4>👨‍💼 Registrado por:</h4>
+                <p><strong>{{creatorName}}</strong> ({{creatorEmail}})</p>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <a href="{{adminUrl}}" class="btn btn-primary">
+                    🔍 Ver Detalles del Cliente
+                </a>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>© {{currentYear}} {{companyName}} - Sistema de Notificaciones Administrativas</p>
+        </div>
+    </div>
+</body>
+</html>

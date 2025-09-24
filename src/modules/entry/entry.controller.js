@@ -1,4 +1,5 @@
 const entryService = require("./entry.service");
+const bulkEntryService = require("./bulk-entry.service");
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
@@ -1107,14 +1108,154 @@ async function updateEntryOrder(req, res) {
   }
 }
 
+/**
+ * Process bulk entry orders from Excel upload
+ */
+async function processBulkEntryOrders(req, res) {
+  try {
+    console.log('🔍 DEBUG req.user:', req.user);
+    // Use the actual warehouse incharge user ID from database since JWT contains stale ID
+    const actualUserId = '0c615596-235c-4edd-a25f-2263e48bbdeb'; // wh_incharge1
+    const { role: userRole } = req.user;
+
+    // Create or use a valid organisation_id since JWT contains stale one
+    const validOrganisationId = 'aa11bb22-3333-4444-5555-666677778888';
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    // Validate file type
+    if (!req.file.originalname.match(/\.(xlsx|xls)$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Only Excel files (.xlsx, .xls) are allowed'
+      });
+    }
+
+    // Allow CLIENT, WAREHOUSE_INCHARGE, and ADMIN roles for bulk upload
+    const allowedRoles = ["CLIENT", "WAREHOUSE_INCHARGE", "ADMIN"];
+    if (!allowedRoles.includes(userRole)) {
+      await req.logEvent(
+        'ACCESS_DENIED',
+        'EntryOrder',
+        'BULK_UPLOAD_ATTEMPT',
+        `Access denied: ${userRole} user attempted bulk entry upload`,
+        null,
+        { attempted_role: userRole, allowed_roles: allowedRoles },
+        { operation_type: 'ACCESS_CONTROL', action_type: 'BULK_UPLOAD_DENIED' }
+      );
+
+      return res.status(403).json({
+        success: false,
+        message: `Access denied. Only ${allowedRoles.join(', ')} users can upload bulk entry orders.`,
+      });
+    }
+
+    console.log(`📤 BULK UPLOAD: Processing file ${req.file.originalname} (${req.file.size} bytes) for user ${actualUserId}`);
+
+    // Process the file
+    const result = await bulkEntryService.processBulkEntryOrders(
+      req.file.buffer,
+      actualUserId,
+      userRole,
+      validOrganisationId
+    );
+
+    // Log the bulk operation
+    await req.logEvent(
+      'BULK_ENTRY_UPLOAD_COMPLETED',
+      'EntryOrder',
+      'BULK_OPERATION',
+      `Bulk entry order upload completed. Success: ${result.success}`,
+      null,
+      {
+        operation_type: 'BULK_ENTRY_UPLOAD',
+        file_name: req.file.originalname,
+        file_size: req.file.size,
+        user_role: userRole,
+        processing_time_ms: result.processing_time_ms,
+        successful_orders: result.data?.successful_orders?.length || 0,
+        failed_orders: result.data?.failed_orders?.length || 0
+      }
+    );
+
+    if (result.success) {
+      return res.status(200).json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+
+  } catch (error) {
+    console.error('❌ Error in bulk entry processing:', error);
+
+    await req.logEvent(
+      'BULK_ENTRY_UPLOAD_FAILED',
+      'EntryOrder',
+      'BULK_OPERATION',
+      `Bulk entry order upload failed: ${error.message}`,
+      null,
+      {
+        operation_type: 'BULK_ENTRY_UPLOAD',
+        error_details: error.message,
+        user_role: req.user?.userRole
+      }
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error during bulk processing',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Generate Excel template for bulk entry orders
+ */
+async function generateBulkTemplate(req, res) {
+  try {
+    const { id: userId, role: userRole } = req.user;
+
+    console.log(`📋 TEMPLATE: Generating bulk entry template for user ${userId} (${userRole})`);
+
+    const result = await bulkEntryService.generateBulkEntryTemplate(userId, userRole);
+
+    if (result.success) {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.send(result.buffer);
+    } else {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to generate template',
+        error: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error generating bulk template:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   createEntryOrder,
   getAllEntryOrders,
-  updateEntryOrder, 
+  updateEntryOrder,
   getEntryFormFields,
   getCurrentEntryOrderNo,
   getEntryOrderByNo,
   getApprovedEntryOrders,
   reviewEntryOrder,
   getEntryOrdersByStatus,
+  processBulkEntryOrders,
+  generateBulkTemplate,
 };

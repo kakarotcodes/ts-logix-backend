@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bienvenido a TSLogix</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            background-color: #f8f9fa;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px 30px;
+        }
+
+        .welcome-message {
+            background-color: #f0f9ff;
+            border-left: 4px solid #2563eb;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .welcome-message h2 {
+            color: #1e40af;
+            font-size: 22px;
+            margin-bottom: 10px;
+        }
+
+        .client-info {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 25px;
+            margin: 25px 0;
+        }
+
+        .client-info h3 {
+            color: #374151;
+            font-size: 18px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .client-info h3::before {
+            content: "👤";
+            margin-right: 10px;
+            font-size: 20px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #6b7280;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 14px;
+            color: #374151;
+            font-weight: 500;
+        }
+
+        .credentials-section {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 30px 0;
+            text-align: center;
+        }
+
+        .credentials-section h3 {
+            font-size: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .credentials-section h3::before {
+            content: "🔐";
+            margin-right: 10px;
+            font-size: 22px;
+        }
+
+        .credentials-box {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            backdrop-filter: blur(10px);
+        }
+
+        .credential-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+        }
+
+        .credential-label {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .credential-value {
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+
+        .cta-section {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            color: white;
+            text-decoration: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: transform 0.2s ease;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .instructions {
+            background-color: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .instructions h4 {
+            color: #92400e;
+            font-size: 16px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .instructions h4::before {
+            content: "💡";
+            margin-right: 10px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            color: #78350f;
+        }
+
+        .instructions li {
+            margin: 8px 0;
+            font-size: 14px;
+        }
+
+        .security-notice {
+            background-color: #fef2f2;
+            border: 1px solid #fca5a5;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .security-notice h4 {
+            color: #dc2626;
+            font-size: 16px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        .security-notice h4::before {
+            content: "🔒";
+            margin-right: 10px;
+        }
+
+        .security-notice p {
+            color: #7f1d1d;
+            font-size: 14px;
+        }
+
+        .footer {
+            background-color: #1f2937;
+            color: #d1d5db;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .footer h4 {
+            color: #f9fafb;
+            margin-bottom: 15px;
+        }
+
+        .footer p {
+            font-size: 14px;
+            margin: 8px 0;
+        }
+
+        .footer a {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 600px) {
+            .email-container {
+                margin: 0;
+                box-shadow: none;
+            }
+
+            .header, .content, .footer {
+                padding: 20px;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .credential-item {
+                flex-direction: column;
+                text-align: center;
+                gap: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>¡Bienvenido a TSLogix!</h1>
+            <p>Su cuenta ha sido creada exitosamente</p>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- Welcome Message -->
+            <div class="welcome-message">
+                <h2>¡Hola {{clientName}}!</h2>
+                <p>Nos complace darle la bienvenida a TSLogix, su solución integral para la gestión de almacenes farmacéuticos. Su cuenta ha sido configurada exitosamente y ya puede comenzar a utilizar nuestros servicios.</p>
+            </div>
+
+            <!-- Client Information -->
+            <div class="client-info">
+                <h3>Información de su Cuenta</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Código de Cliente</span>
+                        <span class="info-value">{{clientCode}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Tipo de Cliente</span>
+                        <span class="info-value">{{#if isJuridico}}Jurídico{{else}}Natural{{/if}}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Email Registrado</span>
+                        <span class="info-value">{{email}}</span>
+                    </div>
+                    {{#if ruc}}
+                    <div class="info-item">
+                        <span class="info-label">RUC</span>
+                        <span class="info-value">{{ruc}}</span>
+                    </div>
+                    {{/if}}
+                    {{#if individualId}}
+                    <div class="info-item">
+                        <span class="info-label">DNI</span>
+                        <span class="info-value">{{individualId}}</span>
+                    </div>
+                    {{/if}}
+                    <div class="info-item">
+                        <span class="info-label">Teléfono</span>
+                        <span class="info-value">{{phone}}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Login Credentials -->
+            <div class="credentials-section">
+                <h3>Sus Credenciales de Acceso</h3>
+                <p style="margin-bottom: 20px;">Utilice estas credenciales para acceder a su cuenta:</p>
+
+                <div class="credentials-box">
+                    <div class="credential-item">
+                        <span class="credential-label">Usuario:</span>
+                        <span class="credential-value">{{username}}</span>
+                    </div>
+                    <div class="credential-item">
+                        <span class="credential-label">Contraseña:</span>
+                        <span class="credential-value">{{password}}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Call to Action -->
+            <div class="cta-section">
+                <a href="{{loginUrl}}" class="cta-button">
+                    🚀 Acceder a mi Cuenta
+                </a>
+            </div>
+
+            <!-- Instructions -->
+            <div class="instructions">
+                <h4>Primeros Pasos</h4>
+                <ol>
+                    <li>Haga clic en el botón "Acceder a mi Cuenta" arriba</li>
+                    <li>Ingrese su usuario y contraseña proporcionados</li>
+                    <li>Complete su perfil con información adicional si es necesario</li>
+                    <li>Cambie su contraseña por una de su preferencia</li>
+                    <li>Explore las funcionalidades disponibles en su dashboard</li>
+                </ol>
+            </div>
+
+            <!-- Security Notice -->
+            <div class="security-notice">
+                <h4>Importante - Seguridad</h4>
+                <p>Por su seguridad, le recomendamos cambiar su contraseña después del primer acceso. Mantenga sus credenciales seguras y no las comparta con terceros.</p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <h4>¿Necesita Ayuda?</h4>
+            <p>Nuestro equipo de soporte está aquí para ayudarle</p>
+            <p>📧 Email: <a href="mailto:{{supportEmail}}">{{supportEmail}}</a></p>
+            <p>🌐 Portal: <a href="{{loginUrl}}">{{loginUrl}}</a></p>
+
+            <hr style="margin: 20px 0; border: none; border-top: 1px solid #374151;">
+
+            <p style="font-size: 12px; color: #9ca3af;">
+                © {{currentYear}} {{companyName}}. Todos los derechos reservados.<br>
+                Este es un correo automático, por favor no responda a esta dirección.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

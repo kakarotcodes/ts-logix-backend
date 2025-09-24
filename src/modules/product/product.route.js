@@ -51,6 +51,10 @@ router.post('/subcategories2', productController.createSubCategory2);
 // ✅ DEPRECATED: Keep old routes for backward compatibility
 router.get('/temperature-ranges', productController.getTemperatureRanges);
 
+// ✅ NEW: Bulk upload routes
+router.get('/bulk-template', productController.getBulkUploadTemplate);
+router.post('/bulk-upload', upload.single('file'), productController.processBulkUpload);
+
 router.route('/')
   .post(upload.array('uploaded_documents', 10), productController.createProduct)
   .get(productController.getAllProducts);
