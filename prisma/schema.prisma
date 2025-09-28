@@ -762,7 +762,7 @@ model ClientUser {
   user                User              @relation("ClientUserAccount", fields: [user_id], references: [id], onDelete: Cascade)
   creator             User              @relation("ClientUserCreator", fields: [created_by], references: [id])
 
-  @@unique([client_id, is_primary], name: "client_primary_user_unique", map: "client_users_client_primary_unique")
+  // @@unique([client_id, is_primary], name: "client_primary_user_unique", map: "client_users_client_primary_unique") // Removed - allows multiple non-primary users
   @@index([client_id], map: "idx_client_users_client_id")
   @@index([is_primary], map: "idx_client_users_is_primary")
   @@index([is_active], map: "idx_client_users_is_active")

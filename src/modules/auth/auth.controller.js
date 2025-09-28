@@ -288,7 +288,7 @@ async function changePassword(req, res) {
 
   } catch (error) {
     console.error("Error in changePassword controller:", error);
-    
+
     if (error.message.includes("Current password is incorrect")) {
       return res.status(400).json({
         success: false,
@@ -313,4 +313,102 @@ async function changePassword(req, res) {
   }
 }
 
-module.exports = { register, login, changePassword };
+/**
+ * Get user profile with client users (for profile page)
+ */
+async function getProfile(req, res) {
+  try {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required"
+      });
+    }
+
+    const profile = await authService.getUserProfile(userId, userRole);
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile retrieved successfully",
+      data: profile
+    });
+
+  } catch (error) {
+    console.error("Error in getProfile controller:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve profile",
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Change password for any client user (admin functionality)
+ */
+async function changeClientUserPassword(req, res) {
+  try {
+    const { client_user_id } = req.params;
+    const { new_password } = req.body;
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    // Only allow CLIENT role users to change passwords for their own client's users
+    if (userRole !== "CLIENT") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only client users can change client user passwords."
+      });
+    }
+
+    if (!new_password) {
+      return res.status(400).json({
+        success: false,
+        message: "New password is required"
+      });
+    }
+
+    const result = await authService.changeClientUserPassword(client_user_id, new_password, userId);
+
+    return res.status(200).json(result);
+
+  } catch (error) {
+    console.error("Error in changeClientUserPassword controller:", error);
+
+    if (error.message.includes("Client user not found")) {
+      return res.status(404).json({
+        success: false,
+        message: "Client user not found",
+        error: error.message
+      });
+    }
+
+    if (error.message.includes("Access denied")) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+        error: error.message
+      });
+    }
+
+    if (error.message.includes("Password must be at least")) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long",
+        error: error.message
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to change password",
+      error: error.message
+    });
+  }
+}
+
+module.exports = { register, login, changePassword, getProfile, changeClientUserPassword };

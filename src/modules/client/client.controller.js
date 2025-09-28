@@ -985,6 +985,263 @@ async function getNextClientCode(req, res) {
   }
 }
 
+// ✅ NEW: Add multiple users to a client
+async function addClientUsers(req, res) {
+  try {
+    const { client_id } = req.params;
+    const { users } = req.body;
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    // Validate access - only warehouse incharge and admin can add client users
+    if (!["WAREHOUSE_INCHARGE", "ADMIN"].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only warehouse incharge and admin can add client users.",
+      });
+    }
+
+    // Validate request data
+    if (!client_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Client ID is required"
+      });
+    }
+
+    if (!users || !Array.isArray(users) || users.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Users array is required and must not be empty"
+      });
+    }
+
+    // Validate each user has required fields
+    for (let i = 0; i < users.length; i++) {
+      const user = users[i];
+      if (!user.username || !user.password) {
+        return res.status(400).json({
+          success: false,
+          message: `User ${i + 1}: username and password are required`
+        });
+      }
+    }
+
+    const result = await clientService.addClientUsers(client_id, users, userId);
+
+    return res.status(201).json({
+      success: true,
+      message: "Client users added successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error adding client users:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error adding client users",
+      error: error.message,
+    });
+  }
+}
+
+// ✅ NEW: Get all users for a client
+async function getClientUsers(req, res) {
+  try {
+    const { client_id } = req.params;
+    const userRole = req.user?.role;
+    const userId = req.user?.id;
+
+    // Validate access
+    if (!["WAREHOUSE_INCHARGE", "ADMIN", "CLIENT"].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied.",
+      });
+    }
+
+    if (!client_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Client ID is required"
+      });
+    }
+
+    // If user is CLIENT role, verify they belong to this client
+    if (userRole === "CLIENT") {
+      const clientUser = await clientService.getClientByUserId(userId);
+      if (!clientUser || clientUser.client_id !== client_id) {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied. You can only view users for your own client.",
+        });
+      }
+    }
+
+    const result = await clientService.getClientUsers(client_id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Client users retrieved successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error getting client users:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error getting client users",
+      error: error.message,
+    });
+  }
+}
+
+// ✅ NEW: Update client user password
+async function updateClientUserPassword(req, res) {
+  try {
+    const { client_user_id } = req.params;
+    const { new_password } = req.body;
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    // Validate access
+    if (!["WAREHOUSE_INCHARGE", "ADMIN"].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only warehouse incharge and admin can update client user passwords.",
+      });
+    }
+
+    if (!client_user_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Client user ID is required"
+      });
+    }
+
+    if (!new_password || new_password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "New password is required and must be at least 6 characters long"
+      });
+    }
+
+    const result = await clientService.updateClientUserPassword(client_user_id, new_password, userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Client user password updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error updating client user password:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error updating client user password",
+      error: error.message,
+    });
+  }
+}
+
+// ✅ NEW: Deactivate client user
+async function deactivateClientUser(req, res) {
+  try {
+    const { client_user_id } = req.params;
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    // Validate access
+    if (!["WAREHOUSE_INCHARGE", "ADMIN"].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only warehouse incharge and admin can deactivate client users.",
+      });
+    }
+
+    if (!client_user_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Client user ID is required"
+      });
+    }
+
+    const result = await clientService.deactivateClientUser(client_user_id, userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Client user deactivated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error deactivating client user:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error deactivating client user",
+      error: error.message,
+    });
+  }
+}
+
+// ✅ NEW: Change password for client user by username (UI-friendly)
+async function changeClientUserPasswordByUsername(req, res) {
+  try {
+    const { client_id, username } = req.params;
+    const { new_password } = req.body;
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    // Validate access - only WAREHOUSE_INCHARGE, ADMIN, and CLIENT users can change passwords
+    if (!["WAREHOUSE_INCHARGE", "ADMIN", "CLIENT"].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Insufficient permissions to change client user passwords."
+      });
+    }
+
+    if (!new_password) {
+      return res.status(400).json({
+        success: false,
+        message: "New password is required"
+      });
+    }
+
+    const result = await clientService.changeClientUserPasswordByUsername(client_id, username, new_password, userId);
+
+    return res.status(200).json(result);
+
+  } catch (error) {
+    console.error("Error in changeClientUserPasswordByUsername controller:", error);
+
+    if (error.message.includes("Client user not found")) {
+      return res.status(404).json({
+        success: false,
+        message: "Client user not found",
+        error: error.message
+      });
+    }
+
+    if (error.message.includes("Access denied")) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+        error: error.message
+      });
+    }
+
+    if (error.message.includes("Password must be at least")) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long",
+        error: error.message
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to change password",
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   createClient,
   getAllClients,
@@ -1006,4 +1263,10 @@ module.exports = {
   getClientCredentialsById,
   markCredentialsHandedOver,
   getNextClientCode,
+  // Client User Management
+  addClientUsers,
+  getClientUsers,
+  updateClientUserPassword,
+  deactivateClientUser,
+  changeClientUserPasswordByUsername,
 }; 

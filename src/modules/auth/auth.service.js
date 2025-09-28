@@ -316,4 +316,180 @@ async function changeUserPassword(userId, currentPassword, newPassword) {
   }
 }
 
-module.exports = { registerUser, loginUser, changeUserPassword };
+/**
+ * Get user profile with client users (for profile page)
+ */
+async function getUserProfile(userId, userRole) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: true,
+        organisation: true
+      }
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const profile = {
+      user: {
+        id: user.id,
+        user_id: user.user_id,
+        email: user.email,
+        role: user.role.name,
+        organisation: {
+          id: user.organisation.organisation_id,
+          name: user.organisation.organisation_name
+        }
+      },
+      client_users: []
+    };
+
+    // If user is a CLIENT, get all client users for their client
+    if (userRole === "CLIENT") {
+      // First, find the client for this user
+      const clientUser = await prisma.clientUser.findFirst({
+        where: { user_id: userId },
+        include: { client: true }
+      });
+
+      if (clientUser) {
+        profile.client = {
+          id: clientUser.client.client_id,
+          name: clientUser.client.name,
+          client_type: clientUser.client.client_type,
+          company_type: clientUser.client.company_type,
+          ruc: clientUser.client.ruc
+        };
+
+        // Get all users for this client
+        const allClientUsers = await prisma.clientUser.findMany({
+          where: { client_id: clientUser.client_id },
+          include: {
+            user: {
+              include: { role: true }
+            }
+          },
+          orderBy: { created_at: 'asc' }
+        });
+
+        profile.client_users = allClientUsers.map(cu => ({
+          client_user_id: cu.client_user_id,
+          user_id: cu.user.user_id,
+          email: cu.user.email,
+          is_primary: cu.is_primary,
+          status: cu.status,
+          is_current_user: cu.user_id === userId,
+          created_at: cu.created_at
+        }));
+      }
+    }
+
+    return profile;
+
+  } catch (error) {
+    console.error("Error in getUserProfile service:", error);
+    throw error;
+  }
+}
+
+/**
+ * Change password for any client user (admin functionality)
+ */
+async function changeClientUserPassword(clientUserId, newPassword, changedByUserId) {
+  try {
+    // Validate password length
+    if (newPassword.length < 6) {
+      throw new Error("New password must be at least 6 characters long");
+    }
+
+    // Get the client user to change password for
+    const clientUser = await prisma.clientUser.findUnique({
+      where: { client_user_id: clientUserId },
+      include: {
+        user: true,
+        client: true
+      }
+    });
+
+    if (!clientUser) {
+      throw new Error("Client user not found");
+    }
+
+    // Get the user making the change
+    const changingUser = await prisma.user.findUnique({
+      where: { id: changedByUserId }
+    });
+
+    if (!changingUser) {
+      throw new Error("Changing user not found");
+    }
+
+    // Verify that the changing user belongs to the same client
+    const changingUserClient = await prisma.clientUser.findFirst({
+      where: { user_id: changedByUserId }
+    });
+
+    if (!changingUserClient || changingUserClient.client_id !== clientUser.client_id) {
+      throw new Error("Access denied. You can only change passwords for users in your own client organization.");
+    }
+
+    // Hash new password
+    const newPasswordHash = bcrypt.hashSync(newPassword, 10);
+
+    // Update password in both tables using transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Update User table
+      await tx.user.update({
+        where: { id: clientUser.user_id },
+        data: { password_hash: newPasswordHash }
+      });
+
+      // Update ClientUser table notes
+      const updatedClientUser = await tx.clientUser.update({
+        where: { client_user_id: clientUserId },
+        data: {
+          notes: `${clientUser.notes || ''}\nPassword changed on ${new Date().toISOString()} by ${changingUser.email}`
+        }
+      });
+
+      return updatedClientUser;
+    });
+
+    // Log password change event
+    await eventLogger.logEvent({
+      userId: changedByUserId,
+      action: 'CLIENT_USER_PASSWORD_CHANGED',
+      entityType: 'ClientUser',
+      entityId: clientUserId,
+      description: `Password changed for client user ${clientUser.user.email} by ${changingUser.email}`,
+      metadata: {
+        operation_type: 'SECURITY',
+        action_type: 'PASSWORD_UPDATE_ADMIN',
+        target_user_email: clientUser.user.email,
+        changed_by_email: changingUser.email,
+        client_name: clientUser.client.name,
+        change_timestamp: new Date().toISOString()
+      }
+    });
+
+    return {
+      success: true,
+      message: "Client user password changed successfully",
+      data: {
+        client_user_id: result.client_user_id,
+        user_email: clientUser.user.email,
+        changed_by: changingUser.email,
+        changed_at: new Date().toISOString()
+      }
+    };
+
+  } catch (error) {
+    console.error("Error in changeClientUserPassword service:", error);
+    throw error;
+  }
+}
+
+module.exports = { registerUser, loginUser, changeUserPassword, getUserProfile, changeClientUserPassword };

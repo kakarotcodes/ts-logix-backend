@@ -34,4 +34,13 @@ router.get("/cells/available", clientController.getAvailableCellsForClient);
 router.get("/cells/available-with-assignments", clientController.getAvailableCellsWithClientAssignments);
 router.put("/cell-assignments/:assignment_id/deactivate", clientController.deactivateClientCellAssignment);
 
+// ✅ NEW: Client User Management endpoints
+router.post("/:client_id/users", clientController.addClientUsers);
+router.get("/:client_id/users", clientController.getClientUsers);
+router.put("/users/:client_user_id/password", clientController.updateClientUserPassword);
+router.put("/users/:client_user_id/deactivate", clientController.deactivateClientUser);
+
+// ✅ NEW: Password change for users in client_users_data (UI-friendly endpoint)
+router.put("/:client_id/users/:username/change-password", clientController.changeClientUserPasswordByUsername);
+
 module.exports = router; 

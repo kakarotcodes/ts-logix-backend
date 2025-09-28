@@ -852,12 +852,36 @@ async function getClientById(clientId) {
           orderBy: { registration_date: 'desc' },
           take: 10 // Latest 10 departure orders
         },
+        // ✅ NEW: Include client users
+        clientUsers: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                user_id: true,
+                email: true,
+                role: {
+                  select: {
+                    name: true
+                  }
+                }
+              }
+            }
+          },
+          orderBy: [
+            { is_primary: 'desc' }, // Primary users first
+            { created_at: 'asc' }   // Then by creation date
+          ]
+        },
         _count: {
           select: {
             cellAssignments: {
               where: { is_active: true }
             },
-            departureOrders: true
+            departureOrders: true,
+            clientUsers: {
+              where: { is_active: true }
+            }
           }
         }
       }
@@ -865,6 +889,29 @@ async function getClientById(clientId) {
 
     if (!client) {
       throw new Error("Client not found");
+    }
+
+    // ✅ NEW: Sync client_users_data with actual clientUsers relation
+    if (client.clientUsers && client.clientUsers.length > 0) {
+      const updatedClientUsersData = client.clientUsers.map(cu => ({
+        name: cu.user.email.split('@')[0] || cu.username, // Extract name from email
+        email: cu.user.email,
+        username: cu.username,
+        is_primary: cu.is_primary,
+        is_active: cu.is_active,
+        created_at: cu.created_at
+      }));
+
+      // Update the client_users_data field in the database
+      await prisma.client.update({
+        where: { client_id: client.client_id },
+        data: {
+          client_users_data: updatedClientUsersData
+        }
+      });
+
+      // Update the returned client object
+      client.client_users_data = updatedClientUsersData;
     }
 
     return client;
@@ -2159,6 +2206,15 @@ async function addClientUsers(clientId, usersData, createdBy) {
         throw new Error("CLIENT role not found in database");
       }
 
+      // Check if client already has a primary user
+      const existingPrimaryUser = await tx.clientUser.findFirst({
+        where: {
+          client_id: clientId,
+          is_primary: true,
+          is_active: true
+        }
+      });
+
       // Create users and client users
       const createdUsers = [];
       for (let i = 0; i < usersData.length; i++) {
@@ -2185,7 +2241,7 @@ async function addClientUsers(clientId, usersData, createdBy) {
             user_id: newUser.id,
             username: userData.username,
             password_hash: passwordHash,
-            is_primary: i === 0, // First user is primary
+            is_primary: false, // All added users are non-primary (existing primary user remains)
             is_active: true,
             created_by: createdBy,
             notes: userData.notes || `User ${i + 1} for client`
@@ -2244,6 +2300,70 @@ async function getClientUsers(clientId) {
     return clientUsers;
   } catch (error) {
     console.error("Error in getClientUsers service:", error);
+    throw error;
+  }
+}
+
+// ✅ NEW: Update client user password
+async function updateClientUserPassword(clientUserId, newPassword, updatedBy) {
+  try {
+    const clientUser = await prisma.clientUser.findUnique({
+      where: { client_user_id: clientUserId },
+      include: {
+        client: {
+          select: {
+            client_id: true,
+            company_name: true,
+            first_names: true,
+            last_name: true
+          }
+        },
+        user: {
+          select: {
+            id: true,
+            user_id: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    if (!clientUser) {
+      throw new Error("Client user not found");
+    }
+
+    if (!clientUser.is_active) {
+      throw new Error("Cannot update password for inactive user");
+    }
+
+    // Hash the new password
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    // Update both ClientUser and User tables
+    const result = await prisma.$transaction(async (tx) => {
+      // Update ClientUser password
+      const updatedClientUser = await tx.clientUser.update({
+        where: { client_user_id: clientUserId },
+        data: {
+          password_hash: passwordHash,
+          notes: `${clientUser.notes || ''}\nPassword updated on ${new Date().toISOString()} by ${updatedBy}`
+        }
+      });
+
+      // Update User password
+      await tx.user.update({
+        where: { id: clientUser.user_id },
+        data: {
+          password_hash: passwordHash
+        }
+      });
+
+      return updatedClientUser;
+    });
+
+    return result;
+  } catch (error) {
+    console.error("Error in updateClientUserPassword service:", error);
     throw error;
   }
 }
@@ -2321,6 +2441,131 @@ async function getNextClientCode() {
   }
 }
 
+/**
+ * Change password for client user by username (UI-friendly)
+ */
+async function changeClientUserPasswordByUsername(clientId, username, newPassword, changedByUserId) {
+  try {
+    // Validate password length
+    if (newPassword.length < 6) {
+      throw new Error("New password must be at least 6 characters long");
+    }
+
+    // Find the client user by client_id and username
+    const clientUser = await prisma.clientUser.findFirst({
+      where: {
+        client_id: clientId,
+        username: username
+      },
+      include: {
+        user: true,
+        client: true
+      }
+    });
+
+    if (!clientUser) {
+      throw new Error("Client user not found");
+    }
+
+    // Get the user making the change
+    const changingUser = await prisma.user.findUnique({
+      where: { id: changedByUserId }
+    });
+
+    if (!changingUser) {
+      throw new Error("Changing user not found");
+    }
+
+    // Hash new password
+    const newPasswordHash = bcrypt.hashSync(newPassword, 10);
+
+    // Update password in both tables using transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Update User table
+      await tx.user.update({
+        where: { id: clientUser.user_id },
+        data: { password_hash: newPasswordHash }
+      });
+
+      // Update ClientUser table notes
+      const updatedClientUser = await tx.clientUser.update({
+        where: { client_user_id: clientUser.client_user_id },
+        data: {
+          notes: `${clientUser.notes || ''}\nPassword changed on ${new Date().toISOString()} by ${changingUser.email}`
+        }
+      });
+
+      return updatedClientUser;
+    });
+
+    // Update the client_users_data field to sync with the change
+    await syncClientUsersData(clientId);
+
+    return {
+      success: true,
+      message: "Client user password changed successfully",
+      data: {
+        client_user_id: result.client_user_id,
+        username: username,
+        user_email: clientUser.user.email,
+        changed_by: changingUser.email,
+        changed_at: new Date().toISOString()
+      }
+    };
+
+  } catch (error) {
+    console.error("Error in changeClientUserPasswordByUsername service:", error);
+    throw error;
+  }
+}
+
+/**
+ * Helper function to sync client_users_data with actual clientUsers relation
+ */
+async function syncClientUsersData(clientId) {
+  try {
+    const client = await prisma.client.findUnique({
+      where: { client_id: clientId },
+      include: {
+        clientUsers: {
+          include: {
+            user: {
+              select: {
+                email: true
+              }
+            }
+          },
+          orderBy: [
+            { is_primary: 'desc' },
+            { created_at: 'asc' }
+          ]
+        }
+      }
+    });
+
+    if (client && client.clientUsers && client.clientUsers.length > 0) {
+      const updatedClientUsersData = client.clientUsers.map(cu => ({
+        name: cu.user.email.split('@')[0] || cu.username,
+        email: cu.user.email,
+        username: cu.username,
+        is_primary: cu.is_primary,
+        is_active: cu.is_active,
+        created_at: cu.created_at
+      }));
+
+      await prisma.client.update({
+        where: { client_id: clientId },
+        data: {
+          client_users_data: updatedClientUsersData
+        }
+      });
+    }
+  } catch (error) {
+    console.error("Error syncing client_users_data:", error);
+    // Don't throw error here to avoid breaking the main operation
+  }
+}
+
 module.exports = {
   createClient,
   getAllClients,
@@ -2343,6 +2588,8 @@ module.exports = {
   getClientByUserId,
   addClientUsers,
   getClientUsers,
+  updateClientUserPassword,
   deactivateClientUser,
+  changeClientUserPasswordByUsername,
   getNextClientCode,
 }; 
