@@ -19,6 +19,7 @@ const upload = multer({
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/octet-stream', // For Excel files that may be detected as binary
       'image/jpeg',
       'image/png',
       'image/gif',

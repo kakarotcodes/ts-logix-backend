@@ -1048,10 +1048,15 @@ async function processBulkUpload(req, res) {
     }
 
     // Validate file type
-    if (file.mimetype !== 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+    const validMimeTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/octet-stream' // Excel files may be detected as this
+    ];
+
+    if (!validMimeTypes.includes(file.mimetype)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid file type. Please upload an Excel (.xlsx) file.'
+        message: `Invalid file type: ${file.mimetype}. Please upload an Excel (.xlsx) file.`
       });
     }
 

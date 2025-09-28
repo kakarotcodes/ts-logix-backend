@@ -152,6 +152,12 @@ async function transformProductData(excelProducts) {
       subcategory2_id: findSubcategory2Id(row['Subcategory 2'], subcategories2),
       temperature_range_id: findTemperatureRangeId(row['Temperature Range'], temperatureRanges),
 
+      // Store original names for validation error reporting
+      category_name: row['Category']?.trim() || null,
+      subcategory1_name: row['Subcategory 1']?.trim() || null,
+      subcategory2_name: row['Subcategory 2']?.trim() || null,
+      temperature_range_name: row['Temperature Range']?.trim() || null,
+
       // Excel row reference for error reporting
       _row_number: excelProducts.indexOf(row) + 2 // +2 because Excel is 1-indexed and has header
     };
@@ -211,42 +217,68 @@ function findTemperatureRangeId(rangeName, temperatureRanges) {
  */
 async function validateProductData(products) {
   const errors = [];
+  const processedCodes = new Set();
 
   for (const product of products) {
     const rowErrors = [];
 
     // Required field validation
     if (!product.name || product.name.trim() === '') {
-      rowErrors.push('Product Name is required');
+      rowErrors.push('Product Name is required and cannot be empty');
+    } else if (product.name.trim().length < 2) {
+      rowErrors.push('Product Name must be at least 2 characters long');
     }
 
     if (!product.manufacturer || product.manufacturer.trim() === '') {
-      rowErrors.push('Manufacturer is required');
+      rowErrors.push('Manufacturer is required and cannot be empty');
+    } else if (product.manufacturer.trim().length < 2) {
+      rowErrors.push('Manufacturer must be at least 2 characters long');
     }
 
-    // Check for duplicate product codes in this batch
+    // Product code validation
     if (product.product_code) {
-      const duplicate = products.find(p =>
-        p.product_code === product.product_code && p._row_number !== product._row_number
-      );
-      if (duplicate) {
-        rowErrors.push(`Duplicate Product Code in row ${duplicate._row_number}`);
-      }
+      const trimmedCode = product.product_code.trim();
 
-      // Check if product code already exists in database
-      const existingProduct = await prisma.product.findUnique({
-        where: { product_code: product.product_code }
-      });
-      if (existingProduct) {
-        rowErrors.push(`Product Code "${product.product_code}" already exists in database`);
+      // Check for duplicates in current batch
+      if (processedCodes.has(trimmedCode)) {
+        rowErrors.push(`Duplicate Product Code "${trimmedCode}" found in this batch`);
+      } else {
+        processedCodes.add(trimmedCode);
+
+        // Check if product code already exists in database
+        const existingProduct = await prisma.product.findUnique({
+          where: { product_code: trimmedCode }
+        });
+        if (existingProduct) {
+          rowErrors.push(`Product Code "${trimmedCode}" already exists in database`);
+        }
       }
+    }
+
+    // Category validation - ensure category exists if provided
+    if (product.category_id === null && product.category_name) {
+      rowErrors.push(`Category "${product.category_name}" not found. Check Categories sheet for valid values.`);
+    }
+
+    // Subcategory validation
+    if (product.subcategory1_id === null && product.subcategory1_name) {
+      rowErrors.push(`Subcategory 1 "${product.subcategory1_name}" not found. Check Subcategories1 sheet for valid values.`);
+    }
+
+    if (product.subcategory2_id === null && product.subcategory2_name) {
+      rowErrors.push(`Subcategory 2 "${product.subcategory2_name}" not found. Check Subcategories2 sheet for valid values.`);
+    }
+
+    // Temperature range validation
+    if (product.temperature_range_id === null && product.temperature_range_name) {
+      rowErrors.push(`Temperature Range "${product.temperature_range_name}" not found. Check Temperature_Ranges sheet for valid values.`);
     }
 
     if (rowErrors.length > 0) {
       errors.push({
         row: product._row_number,
         product_code: product.product_code || product.name,
-        error: rowErrors.join(', ')
+        error: rowErrors.join('; ')
       });
     }
   }
@@ -270,8 +302,15 @@ async function processProductsInBatches(products, userId, userRole) {
 
     for (const productData of batch) {
       try {
-        // Remove row number before creating product
-        const { _row_number, ...cleanProductData } = productData;
+        // Remove row number and original names before creating product
+        const {
+          _row_number,
+          category_name,
+          subcategory1_name,
+          subcategory2_name,
+          temperature_range_name,
+          ...cleanProductData
+        } = productData;
 
         await createProduct(cleanProductData, userId, userRole);
         result.successCount++;
@@ -311,78 +350,104 @@ async function generateProductTemplate() {
       prisma.temperatureRange.findMany({ orderBy: { range: 'asc' } })
     ]);
 
-    // Create workbook
+    // Create workbook with proper settings
     const workbook = XLSX.utils.book_new();
+    workbook.Props = {
+      Title: "TSLogix Product Bulk Upload Template",
+      Subject: "Product Bulk Upload",
+      Author: "TSLogix System",
+      CreatedDate: new Date()
+    };
 
-    // Main Products sheet
+    // Main Products sheet - simplified structure
     const productsData = [
       {
         'Product Name': 'Example Product 1',
         'Product Code': 'PRD-001',
         'Manufacturer': 'Example Manufacturer',
-        'Category': categories.length > 0 ? categories[0].name : 'Example Category',
-        'Subcategory 1': subcategories1.length > 0 ? subcategories1[0].name : 'Example Subcategory 1',
-        'Subcategory 2': subcategories2.length > 0 ? subcategories2[0].name : 'Example Subcategory 2',
-        'Temperature Range': temperatureRanges.length > 0 ? temperatureRanges[0].range : '2-8°C',
+        'Category': categories.length > 0 ? categories[0].name : '',
+        'Subcategory 1': subcategories1.length > 0 ? subcategories1[0].name : '',
+        'Subcategory 2': subcategories2.length > 0 ? subcategories2[0].name : '',
+        'Temperature Range': temperatureRanges.length > 0 ? temperatureRanges[0].range : '',
         'Humidity': '60%',
         'Observations': 'Example observations'
+      },
+      {
+        'Product Name': 'Example Product 2',
+        'Product Code': '',
+        'Manufacturer': 'Another Manufacturer',
+        'Category': categories.length > 1 ? categories[1].name : '',
+        'Subcategory 1': '',
+        'Subcategory 2': '',
+        'Temperature Range': temperatureRanges.length > 1 ? temperatureRanges[1].range : '',
+        'Humidity': '',
+        'Observations': ''
       }
     ];
 
     const productsSheet = XLSX.utils.json_to_sheet(productsData);
     XLSX.utils.book_append_sheet(workbook, productsSheet, 'Products');
 
-    // Reference data sheets
-    if (categories.length > 0) {
-      const categoriesSheet = XLSX.utils.json_to_sheet(
-        categories.map(cat => ({ Name: cat.name, Description: cat.description || '' }))
-      );
-      XLSX.utils.book_append_sheet(workbook, categoriesSheet, 'Categories');
-    }
+    // Reference data sheets - always add even if empty
+    const categoriesSheet = XLSX.utils.json_to_sheet(
+      categories.length > 0 ?
+      categories.map(cat => ({ Name: cat.name, Description: cat.description || '' })) :
+      [{ Name: 'No categories available', Description: '' }]
+    );
+    XLSX.utils.book_append_sheet(workbook, categoriesSheet, 'Categories');
 
-    if (subcategories1.length > 0) {
-      const subcategories1Sheet = XLSX.utils.json_to_sheet(
-        subcategories1.map(sub => ({ Name: sub.name, Description: sub.description || '' }))
-      );
-      XLSX.utils.book_append_sheet(workbook, subcategories1Sheet, 'Subcategories1');
-    }
+    const subcategories1Sheet = XLSX.utils.json_to_sheet(
+      subcategories1.length > 0 ?
+      subcategories1.map(sub => ({ Name: sub.name, Description: sub.description || '' })) :
+      [{ Name: 'No subcategories available', Description: '' }]
+    );
+    XLSX.utils.book_append_sheet(workbook, subcategories1Sheet, 'Subcategories1');
 
-    if (subcategories2.length > 0) {
-      const subcategories2Sheet = XLSX.utils.json_to_sheet(
-        subcategories2.map(sub => ({ Name: sub.name, Description: sub.description || '' }))
-      );
-      XLSX.utils.book_append_sheet(workbook, subcategories2Sheet, 'Subcategories2');
-    }
+    const subcategories2Sheet = XLSX.utils.json_to_sheet(
+      subcategories2.length > 0 ?
+      subcategories2.map(sub => ({ Name: sub.name, Description: sub.description || '' })) :
+      [{ Name: 'No subcategories available', Description: '' }]
+    );
+    XLSX.utils.book_append_sheet(workbook, subcategories2Sheet, 'Subcategories2');
 
-    if (temperatureRanges.length > 0) {
-      const tempRangesSheet = XLSX.utils.json_to_sheet(
-        temperatureRanges.map(tr => ({
-          Range: tr.range,
-          'Min Celsius': tr.min_celsius,
-          'Max Celsius': tr.max_celsius
-        }))
-      );
-      XLSX.utils.book_append_sheet(workbook, tempRangesSheet, 'Temperature_Ranges');
-    }
+    const tempRangesSheet = XLSX.utils.json_to_sheet(
+      temperatureRanges.length > 0 ?
+      temperatureRanges.map(tr => ({
+        Range: tr.range,
+        'Min Celsius': tr.min_celsius,
+        'Max Celsius': tr.max_celsius
+      })) :
+      [{ Range: 'No temperature ranges available', 'Min Celsius': '', 'Max Celsius': '' }]
+    );
+    XLSX.utils.book_append_sheet(workbook, tempRangesSheet, 'Temperature_Ranges');
 
-    // Instructions sheet
+    // Instructions sheet with detailed guidance
     const instructionsData = [
-      { Field: 'Product Name', Required: 'Yes', Description: 'Name of the product' },
-      { Field: 'Product Code', Required: 'No', Description: 'Unique product code (auto-generated if empty)' },
-      { Field: 'Manufacturer', Required: 'Yes', Description: 'Product manufacturer' },
-      { Field: 'Category', Required: 'No', Description: 'Product category (see Categories sheet)' },
-      { Field: 'Subcategory 1', Required: 'No', Description: 'Product subcategory level 1 (see Subcategories1 sheet)' },
-      { Field: 'Subcategory 2', Required: 'No', Description: 'Product subcategory level 2 (see Subcategories2 sheet)' },
-      { Field: 'Temperature Range', Required: 'No', Description: 'Storage temperature range (see Temperature_Ranges sheet)' },
-      { Field: 'Humidity', Required: 'No', Description: 'Storage humidity requirements' },
-      { Field: 'Observations', Required: 'No', Description: 'Additional notes or observations' }
+      { Field: 'Product Name', Required: 'YES', Description: 'Name of the product (e.g., "Paracetamol 500mg")' },
+      { Field: 'Product Code', Required: 'NO', Description: 'Unique product code. Leave empty for auto-generation (format: PRD-XXXXXXXX)' },
+      { Field: 'Manufacturer', Required: 'YES', Description: 'Product manufacturer name (e.g., "Pfizer", "Johnson & Johnson")' },
+      { Field: 'Category', Required: 'NO', Description: 'Product category - must match EXACTLY with Categories sheet values' },
+      { Field: 'Subcategory 1', Required: 'NO', Description: 'Product subcategory level 1 - must match EXACTLY with Subcategories1 sheet values' },
+      { Field: 'Subcategory 2', Required: 'NO', Description: 'Product subcategory level 2 - must match EXACTLY with Subcategories2 sheet values' },
+      { Field: 'Temperature Range', Required: 'NO', Description: 'Storage temperature range - must match EXACTLY with Temperature_Ranges sheet values' },
+      { Field: 'Humidity', Required: 'NO', Description: 'Storage humidity requirements (e.g., "60%", "45-65%")' },
+      { Field: 'Observations', Required: 'NO', Description: 'Additional notes, special handling instructions, or remarks' },
+      { Field: 'IMPORTANT NOTES', Required: '', Description: '1. Sheet MUST be named "Products" (case-sensitive)' },
+      { Field: '', Required: '', Description: '2. Category names are case-insensitive but must match reference data' },
+      { Field: '', Required: '', Description: '3. Product codes must be unique - duplicates will be rejected' },
+      { Field: '', Required: '', Description: '4. Document uploads not supported via Excel - add manually after import' },
+      { Field: '', Required: '', Description: '5. Delete example rows before uploading your data' }
     ];
 
     const instructionsSheet = XLSX.utils.json_to_sheet(instructionsData);
     XLSX.utils.book_append_sheet(workbook, instructionsSheet, 'Instructions');
 
-    // Generate buffer
-    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    // Generate buffer with explicit settings
+    const buffer = XLSX.write(workbook, {
+      type: 'buffer',
+      bookType: 'xlsx',
+      compression: true
+    });
 
     return {
       success: true,
