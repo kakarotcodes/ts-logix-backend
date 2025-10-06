@@ -1009,7 +1009,6 @@ async function getBulkUploadTemplate(req, res) {
     // Set headers for Excel download
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-    res.setHeader('Content-Length', result.buffer.length);
 
     res.send(result.buffer);
   } catch (error) {

@@ -181,18 +181,24 @@ async function loginUser(userId, plainPassword, ipAddress = null, userAgent = nu
       }
     }
 
-    // ✅ Generate JWT token with username
-    const token = jwt.sign(
-      {
-        userId: user.user_id,
-        username: username,
-        email: user.email,
-        role: user.role.name, // Attach role name in the token
-        organisation_id: user.organisation_id,
-        id: user.id,
-      },
-      SECRET_KEY
-    );
+    // ✅ Generate JWT token with username and client data
+    const tokenData = {
+      userId: user.user_id,
+      username: username,
+      email: user.email,
+      role: user.role.name, // Attach role name in the token
+      organisation_id: user.organisation_id,
+      id: user.id,
+    };
+
+    // Add client-specific data to JWT for CLIENT users
+    if (user.role.name === 'CLIENT' && user.clientUserAccounts.length > 0) {
+      const clientUserAccount = user.clientUserAccounts[0];
+      tokenData.client_id = clientUserAccount.client_id;
+      tokenData.is_primary_user = clientUserAccount.is_primary;
+    }
+
+    const token = jwt.sign(tokenData, SECRET_KEY);
 
     // ✅ Prepare response object
     const response = {

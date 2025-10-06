@@ -454,7 +454,6 @@ model User {
   
   // ✅ NEW: Client creation and ownership relations
   createdClients        Client[]             @relation("ClientCreator")
-  clientUserAccount     Client?              @relation("ClientUser")
   
   // ✅ NEW: Multiple client user accounts relations
   clientUserAccounts    ClientUser[]         @relation("ClientUserAccount")
@@ -694,14 +693,8 @@ model Client {
   created_at          DateTime          @default(now())
   updated_at          DateTime          @updatedAt
   
-  // ✅ NEW: Store simple client users data from request (for entry form fields)
-  client_users_data   Json?             // Store the simple client_users array from request
-  
-  // ✅ NEW: Client ownership and user credentials (DEPRECATED - use clientUsers relation)
+  // Client ownership
   created_by          String            // Warehouse incharge who created this client
-  client_user_id      String?           @unique // DEPRECATED: Use clientUsers relation instead
-  auto_username       String?           @unique // DEPRECATED: Use clientUsers relation instead
-  auto_password_hash  String?           // DEPRECATED: Use clientUsers relation instead
   
   // Juridical client fields (used when client_type = JURIDICO)
   company_name        String?           // Company Name
@@ -719,7 +712,6 @@ model Client {
   // Relations
   active_state        ActiveState?      @relation(fields: [active_state_id], references: [state_id])
   creator             User              @relation("ClientCreator", fields: [created_by], references: [id])
-  clientUser          User?             @relation("ClientUser", fields: [client_user_id], references: [id])
   
   // ✅ NEW: Multiple users per client
   clientUsers         ClientUser[]      @relation("ClientUsers")
@@ -733,7 +725,8 @@ model Client {
   // Client-specific cell assignments
   cellAssignments     ClientCellAssignment[]
   
-  // Departure orders for this client
+  // Entry and Departure orders for this client
+  entryOrders         EntryOrder[]
   departureOrders     DepartureOrder[]  @relation("ClientDepartureOrders")
 
   @@index([client_type], map: "idx_client_type")
@@ -750,7 +743,6 @@ model ClientUser {
   client_id           String            @map("client_id")
   user_id             String            @unique @map("user_id")
   username            String            @unique @map("username")
-  password_hash       String            @map("password_hash")
   is_primary          Boolean           @default(false) @map("is_primary") // Only one primary user per client
   is_active           Boolean           @default(true) @map("is_active")
   created_at          DateTime          @default(now())
@@ -942,7 +934,7 @@ model EntryOrder {
   entry_order_id              String              @id @default(uuid()) @map("entry_order_id")
   order_id                    String              @unique
   entry_order_no              String              @unique
-  
+
   // Basic order info
   origin_id                   String?
   document_type_id            String?
@@ -950,6 +942,7 @@ model EntryOrder {
   document_date               DateTime?
   entry_date_time             DateTime?
   created_by                  String
+  client_id                   String?             // ✅ NEW: Direct reference to client (nullable for migration)
   
   // Order details
   order_status                OrderStatusEntry    @default(REVISION)
@@ -976,6 +969,7 @@ model EntryOrder {
   documentType                DocumentType?       @relation(fields: [document_type_id], references: [document_type_id])
   order                       Order               @relation(fields: [order_id], references: [order_id])
   creator                     User                @relation("EntryOrderCreator", fields: [created_by], references: [id])
+  client                      Client?             @relation(fields: [client_id], references: [client_id])
   reviewer                    User?               @relation("EntryOrderReviewer", fields: [reviewed_by], references: [id])
   warehouse                   Warehouse?          @relation(fields: [warehouse_id], references: [warehouse_id])
   

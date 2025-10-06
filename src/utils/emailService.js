@@ -33,6 +33,15 @@ class EmailService {
       // Add additional configuration for different providers
       if (emailConfig.host.includes('gmail')) {
         emailConfig.service = 'gmail';
+      } else if (emailConfig.host.includes('zoho')) {
+        // Zoho-specific configuration
+        emailConfig.host = 'smtp.zoho.com';
+        emailConfig.port = parseInt(process.env.EMAIL_PORT) || 465;
+        emailConfig.secure = process.env.EMAIL_SECURE === 'true' || true; // Use SSL for Zoho
+        emailConfig.tls = {
+          rejectUnauthorized: false
+        };
+        // Remove service property for manual SMTP configuration
       }
 
       this.transporter = nodemailer.createTransport(emailConfig);

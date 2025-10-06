@@ -1,235 +1,12 @@
 const { PrismaClient } = require("@prisma/client");
-const eventLogger = require("../../utils/eventLogger");
-const emailService = require("../../utils/emailService");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
+const faker = require("@faker-js/faker").faker;
+const eventLogger = require("../eventlog/eventlog.service");
+
 const prisma = new PrismaClient();
 
-// ✅ NEW: Generate next client code (C001, C002, etc.)
-async function generateNextClientCode() {
-  try {
-    // Get the latest client with a client_code that matches the pattern C###
-    const latestClient = await prisma.client.findFirst({
-      where: {
-        client_code: {
-          startsWith: 'C'
-        }
-      },
-      select: { client_code: true },
-      orderBy: {
-        created_at: 'desc'
-      }
-    });
-
-    if (!latestClient || !latestClient.client_code) {
-      return 'C001'; // First client
-    }
-
-    // Extract the number from the client code (e.g., C001 -> 001 -> 1)
-    const latestNumber = parseInt(latestClient.client_code.substring(1));
-    
-    if (isNaN(latestNumber)) {
-      return 'C001'; // Fallback if parsing fails
-    }
-
-    // Generate next number with proper padding
-    const nextNumber = latestNumber + 1;
-    return `C${nextNumber.toString().padStart(3, '0')}`;
-
-  } catch (error) {
-    console.error("Error generating client code:", error);
-    
-    // Fallback: count all clients and add 1
-    try {
-      const clientCount = await prisma.client.count();
-      const nextNumber = clientCount + 1;
-      return `C${nextNumber.toString().padStart(3, '0')}`;
-    } catch (fallbackError) {
-      console.error("Fallback client code generation failed:", fallbackError);
-      return `C001`;
-    }
-  }
-}
-
-// ✅ NEW: Ensure client code uniqueness
-async function ensureUniqueClientCode(preferredCode) {
-  try {
-    let attemptCode = preferredCode;
-    let attempt = 0;
-    const maxAttempts = 1000; // Prevent infinite loops
-
-    while (attempt < maxAttempts) {
-      const existingClient = await prisma.client.findFirst({
-        where: { client_code: attemptCode },
-        select: { client_id: true }
-      });
-
-      if (!existingClient) {
-        return attemptCode; // Code is unique
-      }
-
-      // Generate next sequential code
-      attempt++;
-      const baseNumber = parseInt(preferredCode.substring(1)) + attempt;
-      attemptCode = `C${baseNumber.toString().padStart(3, '0')}`;
-    }
-
-    // If we've exhausted attempts, use timestamp-based fallback
-    const timestamp = Date.now().toString().slice(-3);
-    return `C${timestamp}`;
-
-  } catch (error) {
-    console.error("Error ensuring unique client code:", error);
-    // Timestamp-based fallback
-    const timestamp = Date.now().toString().slice(-3);
-    return `C${timestamp}`;
-  }
-}
-
-// ✅ NEW: Helper function to generate unique username
-function generateUniqueUsername(clientType, companyName, firstName, lastName) {
-  const prefix = "client_";
-  let baseName = "";
-  
-  if (clientType === "JURIDICO" && companyName) {
-    // Use first word of company name
-    baseName = companyName.split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
-  } else if (clientType === "NATURAL" && firstName && lastName) {
-    // Use first name + last name initial
-    baseName = (firstName.toLowerCase() + lastName.charAt(0).toLowerCase()).replace(/[^a-z0-9]/g, "");
-  } else {
-    baseName = "user";
-  }
-  
-  // Add random suffix to ensure uniqueness
-  const randomSuffix = Math.random().toString(36).substring(2, 10);
-  return prefix + baseName.substring(0, 8) + "_" + randomSuffix;
-}
-
-// ✅ NEW: Helper function to generate secure password
-function generateSecurePassword() {
-  const length = 12;
-  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
-  let password = "";
-  
-  // Ensure at least one of each type
-  password += "ABCDEFGHIJKLMNOPQRSTUVWXYZ".charAt(Math.floor(Math.random() * 26)); // Uppercase
-  password += "abcdefghijklmnopqrstuvwxyz".charAt(Math.floor(Math.random() * 26)); // Lowercase
-  password += "0123456789".charAt(Math.floor(Math.random() * 10)); // Number
-  password += "!@#$%^&*".charAt(Math.floor(Math.random() * 8)); // Special char
-  
-  // Fill the rest randomly
-  for (let i = 4; i < length; i++) {
-    password += charset.charAt(Math.floor(Math.random() * charset.length));
-  }
-  
-  // Shuffle the password
-  return password.split('').sort(() => Math.random() - 0.5).join('');
-}
-
-// ✅ NEW: Helper function to generate simple, name-based username
-function generateSimpleUsername(clientType, companyName, firstName, lastName, ruc = null, individualId = null) {
-  if (clientType === "JURIDICO" && ruc) {
-    // ✅ NEW: For juridical clients, username is the RUC number
-    return ruc;
-  } else if (clientType === "NATURAL" && individualId) {
-    // ✅ NEW: For natural clients, username is the individual ID
-    return individualId;
-  } else {
-    // Fallback to old logic if RUC/ID not provided
-  let baseName = "";
-  
-    if (clientType === "JURIDICO" && companyName) {
-    baseName = companyName.toLowerCase()
-        .replace(/[^a-z0-9]/g, "")
-        .substring(0, 6);
-    } else if (clientType === "NATURAL" && firstName && lastName) {
-    const cleanFirstName = firstName.toLowerCase().replace(/[^a-z]/g, "").substring(0, 4);
-    const cleanLastName = lastName.toLowerCase().replace(/[^a-z]/g, "").substring(0, 3);
-    baseName = cleanFirstName + cleanLastName;
-  } else {
-    baseName = "client";
-  }
-  
-    const simpleNumber = Math.floor(Math.random() * 900) + 100;
-  return baseName + simpleNumber;
-}
-}
-
-// ✅ NEW: Helper function to generate simple, ID-based password
-function generateSimplePassword(clientType, companyName, firstName, lastName, ruc = null, individualId = null) {
-  if (clientType === "JURIDICO" && ruc) {
-    // ✅ NEW: For juridical clients, initial password is the RUC number
-    return ruc;
-  } else if (clientType === "NATURAL" && individualId) {
-    // ✅ NEW: For natural clients, initial password is the individual ID
-    return individualId;
-  } else {
-    // Fallback to old logic if RUC/ID not provided
-  let basePassword = "";
-  
-    if (clientType === "JURIDICO" && companyName) {
-    const cleanName = companyName.replace(/[^a-zA-Z]/g, "");
-    const firstPart = cleanName.substring(0, 3);
-    const lastPart = cleanName.length > 3 ? cleanName.slice(-2) : "";
-    basePassword = firstPart + "123" + lastPart;
-    } else if (clientType === "NATURAL" && firstName && lastName) {
-    const cleanFirstName = firstName.replace(/[^a-zA-Z]/g, "").substring(0, 3);
-    const cleanLastName = lastName.replace(/[^a-zA-Z]/g, "").substring(0, 2);
-    basePassword = cleanFirstName + "123" + cleanLastName;
-  } else {
-    basePassword = "client123";
-  }
-  
-    const simpleNumber = Math.floor(Math.random() * 90) + 10;
-  return basePassword + simpleNumber;
-  }
-}
-
-// ✅ NEW: Store client credentials for handover (temporary storage)
-const clientCredentialsForHandover = new Map();
-
-function storeCredentialsForHandover(clientId, username, password, clientName) {
-  clientCredentialsForHandover.set(clientId, {
-    username,
-    password,
-    clientName,
-    createdAt: new Date(),
-    handedOver: false
-  });
-  
-  // Auto-cleanup after 24 hours
-  setTimeout(() => {
-    clientCredentialsForHandover.delete(clientId);
-  }, 24 * 60 * 60 * 1000);
-}
-
-// ✅ NEW: Get credentials for handover
-function getCredentialsForHandover(clientId) {
-  return clientCredentialsForHandover.get(clientId);
-}
-
-// ✅ NEW: Mark credentials as handed over
-function markCredentialsAsHandedOver(clientId) {
-  const creds = clientCredentialsForHandover.get(clientId);
-  if (creds) {
-    creds.handedOver = true;
-    creds.handedOverAt = new Date();
-  }
-}
-
-// ✅ NEW: Get all pending credentials for handover
-function getAllPendingCredentials() {
-  const pending = [];
-  for (const [clientId, creds] of clientCredentialsForHandover.entries()) {
-    if (!creds.handedOver) {
-      pending.push({ clientId, ...creds });
-    }
-  }
-  return pending;
-}
-
 /**
- * Create a new client (Juridical or Natural) with REQUIRED cell assignment - OPTIMIZED VERSION
+ * Create a new client (Juridical or Natural) with REQUIRED cell assignment - FIXED VERSION
  */
 async function createClient(clientData, cellAssignmentData = {}) {
   try {
@@ -297,7 +74,7 @@ async function createClient(clientData, cellAssignmentData = {}) {
       throw new Error("Invalid client type. Must be JURIDICO or NATURAL");
     }
 
-    // ✅ OPTIMIZATION 1: Run all validations in parallel
+    // Run all validations in parallel
     const [
       existingRucClient,
       existingIdClient,
@@ -309,45 +86,40 @@ async function createClient(clientData, cellAssignmentData = {}) {
       // Check for duplicate RUC for juridical clients
       clientData.client_type === "JURIDICO" && clientData.ruc
         ? prisma.client.findFirst({
-        where: { 
-          ruc: clientData.ruc,
+            where: {
+              ruc: clientData.ruc,
               client_type: "JURIDICO"
             },
             select: { client_id: true }
           })
         : Promise.resolve(null),
-
       // Check for duplicate individual_id for natural clients
       clientData.client_type === "NATURAL" && clientData.individual_id
         ? prisma.client.findFirst({
-        where: { 
-          individual_id: clientData.individual_id,
+            where: {
+              individual_id: clientData.individual_id,
               client_type: "NATURAL"
             },
             select: { client_id: true }
           })
         : Promise.resolve(null),
-
-    // Check for duplicate email
+      // Check for duplicate email
       prisma.client.findFirst({
         where: { email: clientData.email },
         select: { client_id: true }
       }),
-
-    // Validate warehouse exists
+      // Validate warehouse exists
       prisma.warehouse.findUnique({
         where: { warehouse_id: cellAssignmentData.warehouse_id },
         select: { warehouse_id: true, name: true }
       }),
-
-    // Validate cells exist and are available
+      // Validate cells exist and are available
       prisma.warehouseCell.findMany({
-      where: {
-        id: { in: cellAssignmentData.cell_ids },
-        warehouse_id: cellAssignmentData.warehouse_id,
-        status: "AVAILABLE",
-          // ✅ NEW: Allow assignment of standard AND special quality control cells
-          cell_role: { 
+        where: {
+          id: { in: cellAssignmentData.cell_ids },
+          warehouse_id: cellAssignmentData.warehouse_id,
+          status: "AVAILABLE",
+          cell_role: {
             in: [
               "STANDARD",     // Regular storage cells
               "REJECTED",     // For RECHAZADOS (rejected products)
@@ -360,18 +132,17 @@ async function createClient(clientData, cellAssignmentData = {}) {
         },
         select: { id: true, row: true, bay: true, position: true, cell_role: true }
       }),
-
-    // Check for existing assignments for these cells
+      // Check for existing assignments for these cells
       prisma.clientCellAssignment.findMany({
-      where: {
-        cell_id: { in: cellAssignmentData.cell_ids },
-        is_active: true
+        where: {
+          cell_id: { in: cellAssignmentData.cell_ids },
+          is_active: true
         },
         select: { cell_id: true }
       })
     ]);
 
-    // ✅ OPTIMIZATION 2: Quick validation checks
+    // Quick validation checks
     if (existingRucClient) {
       throw new Error("A juridical client with this RUC already exists");
     }
@@ -398,7 +169,7 @@ async function createClient(clientData, cellAssignmentData = {}) {
     const validClientFields = [
       'client_type',
       'email',
-      'address', 
+      'address',
       'phone',
       'cell_phone',
       'active_state_id',
@@ -417,19 +188,14 @@ async function createClient(clientData, cellAssignmentData = {}) {
 
     // Clean data based on client type and filter valid fields only
     const cleanedData = {};
-    
+
     // Only include valid fields
     validClientFields.forEach(field => {
       if (clientData.hasOwnProperty(field)) {
         cleanedData[field] = clientData[field];
       }
     });
-    
-    // ✅ NEW: Store client_users_data if provided in the request
-    if (clientData.client_users && Array.isArray(clientData.client_users)) {
-      cleanedData.client_users_data = clientData.client_users;
-    }
-    
+
     if (clientData.client_type === "JURIDICO") {
       // Clear natural fields for juridical clients
       cleanedData.first_names = null;
@@ -450,7 +216,7 @@ async function createClient(clientData, cellAssignmentData = {}) {
       cleanedData.date_of_birth = new Date(cleanedData.date_of_birth);
     }
 
-    // ✅ NEW: Generate client code
+    // Generate client code
     const nextClientCode = await generateNextClientCode();
     const uniqueClientCode = await ensureUniqueClientCode(nextClientCode);
 
@@ -495,17 +261,18 @@ async function createClient(clientData, cellAssignmentData = {}) {
       });
     }
 
-    // ✅ OPTIMIZATION 3: Simplified transaction with bulk operations
+    // Main transaction with simplified operations
     const result = await prisma.$transaction(async (tx) => {
       // Get creator and role info in parallel
       const [creator, clientRole] = await Promise.all([
         tx.user.findUnique({
-        where: { id: cellAssignmentData.assigned_by },
-          select: { 
-            id: true, 
+          where: { id: cellAssignmentData.assigned_by },
+          select: {
+            id: true,
             organisation_id: true,
             first_name: true,
-            last_name: true
+            last_name: true,
+            email: true
           }
         }),
         tx.role.findUnique({
@@ -539,26 +306,26 @@ async function createClient(clientData, cellAssignmentData = {}) {
         }
       });
 
-      // ✅ FIX: Create ClientUser records for proper user-client relationship
+      // Create all users and client user relationships
       const createdClientUsers = [];
       for (const userData of clientUsers) {
-        // Hash password
-        const hashedPassword = await bcrypt.hash(userData.password, 10);
+        const passwordHash = await bcrypt.hash(userData.password, 10);
 
-        // Create user account
+        // Create User account
         const newUser = await tx.user.create({
           data: {
             user_id: userData.username,
             email: userData.email,
-            password_hash: hashedPassword,
+            password_hash: passwordHash,
             role: { connect: { role_id: clientRole.role_id } },
             organisation: { connect: { organisation_id: creator.organisation_id } },
             first_name: userData.first_name,
             last_name: userData.last_name
-          }
+          },
+          select: { id: true, user_id: true, email: true }
         });
 
-        // Create client user link
+        // Create ClientUser relationship
         const clientUser = await tx.clientUser.create({
           data: {
             client_id: client.client_id,
@@ -567,57 +334,187 @@ async function createClient(clientData, cellAssignmentData = {}) {
             is_primary: userData.is_primary,
             is_active: true,
             created_by: cellAssignmentData.assigned_by,
-            notes: `User created during client creation for ${client.client_type === "JURIDICO" ? client.company_name : `${client.first_names} ${client.last_name}`}`
+            notes: userData.is_primary
+              ? `Primary user created during client creation`
+              : `Additional user created during client creation`
           }
         });
 
         createdClientUsers.push({
-          clientUser,
-          user: newUser,
-          credentials: {
-            username: userData.username,
-            password: userData.password
-          }
+          username: userData.username,
+          password: userData.password, // Store for credentials response
+          email: newUser.email,
+          is_primary: userData.is_primary
         });
       }
 
-      // ✅ OPTIMIZATION 4: Bulk create cell assignments
-      const finalNotes = cellAssignmentData.notes || `Cell assigned during client creation for ${client.client_type === "JURIDICO" ? client.company_name : `${client.first_names} ${client.last_name}`}`;
-      
-      const assignmentData = cellAssignmentData.cell_ids.map((cellId, index) => ({
+      // Bulk create cell assignments
+      const cellAssignments = cellAssignmentData.cell_ids.map(cell_id => ({
         client_id: client.client_id,
-        cell_id: cellId,
+        cell_id: cell_id,
         warehouse_id: cellAssignmentData.warehouse_id,
         assigned_by: cellAssignmentData.assigned_by,
-        priority: index + 1,
-        notes: finalNotes,
-        max_capacity: cellAssignmentData.max_capacity || null
+        notes: cellAssignmentData.notes || `Assigned during client creation`,
+        max_capacity: cellAssignmentData.max_capacity || 100.00
       }));
 
-      // ✅ OPTIMIZATION 5: Single bulk insert for all cell assignments
-      await tx.clientCellAssignment.createMany({
-        data: assignmentData,
-        skipDuplicates: false
+      const createdAssignments = await tx.clientCellAssignment.createMany({
+        data: cellAssignments
       });
 
-      // ✅ OPTIMIZATION 6: Single event log for client creation (instead of individual cell logs)
-        await eventLogger.logEvent({
-          userId: cellAssignmentData.assigned_by,
-        action: 'CLIENT_CREATED',
-        entityType: 'Client',
-        entityId: client.client_id,
-        description: `Created ${client.client_type.toLowerCase()} client: ${client.client_type === "JURIDICO" ? client.company_name : `${client.first_names} ${client.last_name}`} with ${cellAssignmentData.cell_ids.length} cell assignments`,
-          newValues: {
-          client_type: client.client_type,
-          email: client.email,
-          company_name: client.company_name,
-          first_names: client.first_names,
-          last_name: client.last_name,
-          cells_assigned: cellAssignmentData.cell_ids.length,
-          warehouse_id: cellAssignmentData.warehouse_id
+      // Get complete client with relationships
+      const clientWithAssignments = await tx.client.findUnique({
+        where: { client_id: client.client_id },
+        include: {
+          creator: {
+            select: {
+              first_name: true,
+              last_name: true,
+              email: true
+            }
           },
-          metadata: {
-          operation_type: 'CLIENT_CREATION',
+          clientUsers: {
+            include: {
+              user: {
+                select: {
+                  user_id: true,
+                  email: true,
+                  first_name: true,
+                  last_name: true
+                }
+              }
+            }
+          },
+          cellAssignments: {
+            where: { is_active: true },
+            include: {
+              cell: {
+                select: {
+                  id: true,
+                  row: true,
+                  bay: true,
+                  position: true,
+                  cell_role: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      return {
+        client: clientWithAssignments,
+        users: createdClientUsers,
+        cellAssignments: createdAssignments.count
+      };
+    }, {
+      timeout: 30000 // Increase timeout for large cell assignments
+    });
+
+    // Log successful client creation
+    const clientName = result.client.client_type === "JURIDICO"
+      ? result.client.company_name
+      : `${result.client.first_names} ${result.client.last_name}`;
+
+    console.log(`✅ Client created successfully: ${clientName} (${result.client.client_id})`);
+    console.log(`📋 Created ${result.users.length} user(s) for this client`);
+    console.log(`🏢 Assigned ${result.cellAssignments} cell(s) in warehouse ${cellAssignmentData.warehouse_id}`);
+
+    // Return client data with user credentials for handover
+    return {
+      ...result.client,
+      _credentials: result.users, // Include all user credentials for handover
+      _cellAssignments: result.cellAssignments
+    };
+
+  } catch (error) {
+    console.error("Error in createClient service:", error);
+    throw error;
+  }
+}
+
+// Helper function to generate next client code
+async function generateNextClientCode() {
+  try {
+    const latestClient = await prisma.client.findFirst({
+      orderBy: {
+        created_at: 'desc'
+      },
+      select: {
+        client_code: true
+      }
+    });
+
+    if (!latestClient || !latestClient.client_code) {
+      return 'C001'; // First client
+    }
+
+    // Extract the number from the client code (e.g., C001 -> 001 -> 1)
+    const latestNumber = parseInt(latestClient.client_code.substring(1));
+
+    if (isNaN(latestNumber)) {
+      return 'C001'; // Fallback if parsing fails
+    }
+
+    // Generate next number with proper padding
+    const nextNumber = latestNumber + 1;
+    return `C${nextNumber.toString().padStart(3, '0')}`;
+
+  } catch (error) {
+    console.error("Error generating client code:", error);
+
+    // Fallback: count all clients and add 1
+    try {
+      const clientCount = await prisma.client.count();
+      const nextNumber = clientCount + 1;
+      return `C${nextNumber.toString().padStart(3, '0')}`;
+    } catch (fallbackError) {
+      console.error("Fallback client code generation failed:", fallbackError);
+      return `C001`;
+    }
+  }
+}
+
+// Ensure client code uniqueness
+async function ensureUniqueClientCode(preferredCode) {
+  try {
+    let attemptCode = preferredCode;
+    let attempt = 0;
+    const maxAttempts = 1000; // Prevent infinite loops
+
+    while (attempt < maxAttempts) {
+      const existingClient = await prisma.client.findFirst({
+        where: { client_code: attemptCode },
+        select: { client_id: true }
+      });
+
+      if (!existingClient) {
+        return attemptCode; // Code is unique
+      }
+
+      // Generate next sequential code
+      attempt++;
+      const baseNumber = parseInt(preferredCode.substring(1)) + attempt;
+      attemptCode = `C${baseNumber.toString().padStart(3, '0')}`;
+    }
+
+    // If we've exhausted attempts, use timestamp-based fallback
+    const timestamp = Date.now().toString().slice(-3);
+    return `C${timestamp}`;
+
+  } catch (error) {
+    console.error("Error ensuring unique client code:", error);
+    // Timestamp-based fallback
+    const timestamp = Date.now().toString().slice(-3);
+    return `C${timestamp}`;
+  }
+}
+
+module.exports = {
+  createClient,
+  generateNextClientCode,
+  ensureUniqueClientCode
+};          operation_type: 'CLIENT_CREATION',
           client_type: client.client_type,
           has_cell_assignment: true,
           cell_count: cellAssignmentData.cell_ids.length,
@@ -664,36 +561,25 @@ async function createClient(clientData, cellAssignmentData = {}) {
       });
 
       // ✅ NEW: Store credentials for handover to client
-      const clientName = clientWithAssignments.client_type === "JURIDICO"
-        ? clientWithAssignments.company_name
+      const clientName = clientWithAssignments.client_type === "JURIDICO" 
+        ? clientWithAssignments.company_name 
         : `${clientWithAssignments.first_names} ${clientWithAssignments.last_name}`;
-
-      // Get primary user credentials
-      const primaryUser = createdClientUsers.find(cu => cu.credentials.is_primary || createdClientUsers[0]);
-      const primaryCredentials = primaryUser ? primaryUser.credentials : null;
-
-      if (primaryCredentials) {
-        storeCredentialsForHandover(
-          clientWithAssignments.client_id,
-          primaryCredentials.username,
-          primaryCredentials.password,
-          clientName
-        );
-      }
+      
+      storeCredentialsForHandover(
+        clientWithAssignments.client_id, 
+        autoUsername, 
+        autoPassword, 
+        clientName
+      );
 
       // ✅ NEW: Add auto-generated credentials to response (for backend logging only)
       return {
         ...clientWithAssignments,
-        _autoCredentials: primaryCredentials ? {
-          username: primaryCredentials.username,
-          password: primaryCredentials.password,
+        _autoCredentials: {
+          username: autoUsername,
+          password: autoPassword,
           note: "These credentials are auto-generated and should be securely communicated to the client"
-        } : null,
-        _allUserCredentials: createdClientUsers.map(cu => ({
-          username: cu.credentials.username,
-          password: cu.credentials.password,
-          is_primary: cu.credentials.is_primary
-        }))
+        }
       };
     }, {
       timeout: 30000 // Increase timeout for large cell assignments
@@ -703,39 +589,27 @@ async function createClient(clientData, cellAssignmentData = {}) {
     try {
       console.log(`📧 Sending onboarding email to ${result.email}...`);
 
-      // Get primary user credentials for email
-      const primaryCredentials = result._autoCredentials;
-
-      if (primaryCredentials) {
-        const emailResult = await emailService.sendClientOnboardingEmail(
-          result,
-          {
-            username: primaryCredentials.username,
-            password: primaryCredentials.password
-          }
-        );
-
-        if (emailResult.success) {
-          console.log(`✅ Onboarding email sent successfully to ${result.email}`);
-          result._emailNotification = {
-            sent: true,
-            messageId: emailResult.messageId,
-            note: "Client onboarding email sent successfully"
-          };
-        } else {
-          console.warn(`⚠️ Failed to send onboarding email to ${result.email}:`, emailResult.error);
-          result._emailNotification = {
-            sent: false,
-            error: emailResult.error,
-            note: "Email notification failed - client creation successful but email not sent"
-          };
+      const emailResult = await emailService.sendClientOnboardingEmail(
+        result,
+        {
+          username: autoUsername,
+          password: autoPassword
         }
+      );
+
+      if (emailResult.success) {
+        console.log(`✅ Onboarding email sent successfully to ${result.email}`);
+        result._emailNotification = {
+          sent: true,
+          messageId: emailResult.messageId,
+          note: "Client onboarding email sent successfully"
+        };
       } else {
-        console.warn(`⚠️ No primary credentials found for client ${result.client_id} - skipping onboarding email`);
+        console.warn(`⚠️ Failed to send onboarding email to ${result.email}:`, emailResult.error);
         result._emailNotification = {
           sent: false,
-          error: "No primary credentials available",
-          note: "Email notification skipped - no credentials to send"
+          error: emailResult.error,
+          note: "Email notification failed - client creation successful but email not sent"
         };
       }
     } catch (emailError) {
@@ -2293,6 +2167,7 @@ async function addClientUsers(clientId, usersData, createdBy) {
             client_id: clientId,
             user_id: newUser.id,
             username: userData.username,
+            password_hash: passwordHash,
             is_primary: false, // All added users are non-primary (existing primary user remains)
             is_active: true,
             created_by: createdBy,
@@ -2397,6 +2272,7 @@ async function updateClientUserPassword(clientUserId, newPassword, updatedBy) {
       const updatedClientUser = await tx.clientUser.update({
         where: { client_user_id: clientUserId },
         data: {
+          password_hash: passwordHash,
           notes: `${clientUser.notes || ''}\nPassword updated on ${new Date().toISOString()} by ${updatedBy}`
         }
       });

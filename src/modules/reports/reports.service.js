@@ -691,13 +691,26 @@ async function generateProductCategoryReport(filters, userContext) {
     // Role-based access control
     let clientFilter = {};
     if (userContext.userRole === 'CLIENT') {
-      clientFilter = {
-        entry_order_product: {
-          entry_order: {
-            created_by: userContext.userId
+      if (userContext.client_id) {
+        clientFilter = {
+          entry_order_product: {
+            entry_order: {
+              client_id: userContext.client_id,
+              // For non-primary users, also filter by created_by
+              ...(userContext.is_primary_user ? {} : { created_by: userContext.userId })
+            }
           }
-        }
-      };
+        };
+      } else {
+        // Fallback: filter by created_by if no client_id
+        clientFilter = {
+          entry_order_product: {
+            entry_order: {
+              created_by: userContext.userId
+            }
+          }
+        };
+      }
     } else if (userContext.userRole === 'WAREHOUSE_ASSISTANT') {
       const clientAssignments = await prisma.clientProductAssignment.findMany({
         where: { user_id: userContext.userId },
@@ -992,16 +1005,32 @@ async function generateProductWiseReport(filters, userContext) {
     let departureClientFilter = {};
     
     if (userContext.userRole === 'CLIENT') {
-      entryClientFilter = {
-        entry_order: {
-          created_by: userContext.userId
-        }
-      };
-      departureClientFilter = {
-        departure_order: {
-          created_by: userContext.userId
-        }
-      };
+      if (userContext.client_id) {
+        entryClientFilter = {
+          entry_order: {
+            client_id: userContext.client_id,
+            ...(userContext.is_primary_user ? {} : { created_by: userContext.userId })
+          }
+        };
+        departureClientFilter = {
+          departure_order: {
+            client_id: userContext.client_id,
+            ...(userContext.is_primary_user ? {} : { created_by: userContext.userId })
+          }
+        };
+      } else {
+        // Fallback: filter by created_by if no client_id
+        entryClientFilter = {
+          entry_order: {
+            created_by: userContext.userId
+          }
+        };
+        departureClientFilter = {
+          departure_order: {
+            created_by: userContext.userId
+          }
+        };
+      }
     } else if (userContext.userRole === 'WAREHOUSE_ASSISTANT') {
       const clientAssignments = await prisma.clientProductAssignment.findMany({
         where: { user_id: userContext.userId },
@@ -1332,9 +1361,17 @@ async function generateCardexReport(filters, userContext) {
     // Role-based access control for entry orders
     let clientFilter = {};
     if (userContext.userRole === 'CLIENT') {
-      clientFilter = {
-        created_by: userContext.userId
-      };
+      if (userContext.client_id) {
+        clientFilter = {
+          client_id: userContext.client_id,
+          ...(userContext.is_primary_user ? {} : { created_by: userContext.userId })
+        };
+      } else {
+        // Fallback: filter by created_by if no client_id
+        clientFilter = {
+          created_by: userContext.userId
+        };
+      }
     } else if (userContext.userRole === 'WAREHOUSE_ASSISTANT') {
       const clientAssignments = await prisma.clientProductAssignment.findMany({
         where: { user_id: userContext.userId },

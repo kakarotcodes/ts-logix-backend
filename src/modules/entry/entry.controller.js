@@ -100,15 +100,36 @@ async function createEntryOrder(req, res) {
     });
   }
 
-  // ✅ FIXED: Override organisation_id and created_by from JWT token
+  // ✅ FIXED: Override organisation_id, created_by, and client_id from JWT token
   entryData.organisation_id = userOrgId;
   entryData.created_by = entryData.created_by || userId;
+  entryData.client_id = req.user?.client_id; // Add client_id for CLIENT users
+
+  // Validate client_id is provided for CLIENT users
+  if (!entryData.client_id) {
+    console.log('❌ Missing client_id for CLIENT user');
+
+    await req.logError(
+      new Error('Missing client_id in JWT token for CLIENT user'),
+      {
+        controller: 'entry',
+        action: 'createEntryOrder',
+        jwt_data: req.user,
+        user_role: userRole
+      }
+    );
+
+    return res.status(403).json({
+      message: "Client identification required. Please log in again.",
+    });
+  }
   
   // ✅ DEBUG: Log what we're passing to service
   console.log('Final entryData being passed to service:', {
     entry_order_no: entryData.entry_order_no,
     organisation_id: entryData.organisation_id,
     created_by: entryData.created_by,
+    client_id: entryData.client_id,
     productCount: entryData.products?.length
   });
 
@@ -423,7 +444,7 @@ async function getAllEntryOrders(req, res) {
 
     // Admin and Warehouse Incharge can see all orders, others see only their organization's orders
     const filterOrg = (userRole === "ADMIN" || userRole === "WAREHOUSE_INCHARGE") ? null : organisationId;
-    
+
     // Build filters object
     const filters = {
       search: req.query.search || searchOrderNo,
@@ -431,6 +452,22 @@ async function getAllEntryOrders(req, res) {
       endDate: req.query.endDate,
       statuses: req.query.statuses ? req.query.statuses.split(',') : null
     };
+
+    // ✅ NEW: Add client-specific filtering for CLIENT users
+    if (userRole === "CLIENT") {
+      const clientId = req.user?.client_id;
+      const isPrimaryUser = req.user?.is_primary_user;
+
+      if (!clientId) {
+        return res.status(403).json({ message: "Client identification required. Please log in again." });
+      }
+
+      // Primary users see all orders for their client, non-primary users see only their own orders
+      filters.client_id = clientId;
+      if (!isPrimaryUser) {
+        filters.created_by = req.user?.id; // Non-primary users see only their own orders
+      }
+    }
 
     const result = await entryService.getAllEntryOrders(
       filterOrg,

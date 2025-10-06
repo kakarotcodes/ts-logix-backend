@@ -338,10 +338,12 @@ async function processProductsInBatches(products, userId, userRole) {
 }
 
 /**
- * Generate Excel template for bulk product upload
+ * Generate Excel template for bulk product upload - matches working entry template pattern
  */
 async function generateProductTemplate() {
   try {
+    console.log('🔧 Starting product template generation...');
+
     // Get reference data for the template
     const [categories, subcategories1, subcategories2, temperatureRanges] = await Promise.all([
       prisma.productCategory.findMany({ orderBy: { name: 'asc' } }),
@@ -350,104 +352,163 @@ async function generateProductTemplate() {
       prisma.temperatureRange.findMany({ orderBy: { range: 'asc' } })
     ]);
 
-    // Create workbook with proper settings
-    const workbook = XLSX.utils.book_new();
-    workbook.Props = {
-      Title: "TSLogix Product Bulk Upload Template",
-      Subject: "Product Bulk Upload",
-      Author: "TSLogix System",
-      CreatedDate: new Date()
-    };
+    console.log(`📊 Template data loaded: ${categories.length} categories, ${subcategories1.length} subcategories1, ${subcategories2.length} subcategories2, ${temperatureRanges.length} temperature ranges`);
 
-    // Main Products sheet - simplified structure
+    // Create workbook with multiple sheets - following working entry template pattern
+    const workbook = XLSX.utils.book_new();
+
+    // INSTRUCTIONS SHEET FIRST - User guide (matching entry template structure)
+    const instructions = [
+      { Step: 1, Instruction: 'Fill out the Products sheet with product information' },
+      { Step: 2, Instruction: 'Use EXACT names from the reference sheets (Categories, Subcategories, etc.)' },
+      { Step: 3, Instruction: 'Product Name and Manufacturer are required fields' },
+      { Step: 4, Instruction: 'Product codes must be unique or leave blank for auto-generation' },
+      { Step: 5, Instruction: 'Category names must match exactly from Categories sheet' },
+      { Step: 6, Instruction: 'Subcategory names must match exactly from respective sheets' },
+      { Step: 7, Instruction: 'Temperature ranges must match exactly from Temperature_Ranges sheet' },
+      { Step: 8, Instruction: 'Delete example rows before uploading your data' },
+      { Step: 9, Instruction: 'Upload the completed file to the bulk upload page' },
+      { Step: 10, Instruction: 'Document uploads not supported via Excel - add manually after import' }
+    ];
+
+    // MAIN PRODUCTS SHEET - Using safe fallbacks with comprehensive examples
     const productsData = [
       {
-        'Product Name': 'Example Product 1',
+        'Product Name': 'Paracetamol 500mg',
         'Product Code': 'PRD-001',
-        'Manufacturer': 'Example Manufacturer',
-        'Category': categories.length > 0 ? categories[0].name : '',
-        'Subcategory 1': subcategories1.length > 0 ? subcategories1[0].name : '',
-        'Subcategory 2': subcategories2.length > 0 ? subcategories2[0].name : '',
-        'Temperature Range': temperatureRanges.length > 0 ? temperatureRanges[0].range : '',
+        'Manufacturer': 'Pfizer',
+        'Category': categories.length > 0 ? categories[0].name : 'Medicamentos',
+        'Subcategory 1': subcategories1.length > 0 ? subcategories1[0].name : 'Analgesicos',
+        'Subcategory 2': subcategories2.length > 0 ? subcategories2[0].name : 'Tabletas',
+        'Temperature Range': temperatureRanges.length > 0 ? temperatureRanges[0].range : '15-25°C',
         'Humidity': '60%',
-        'Observations': 'Example observations'
+        'Observations': 'Store in dry place away from direct sunlight'
       },
       {
-        'Product Name': 'Example Product 2',
+        'Product Name': 'Vitamina C 1000mg',
         'Product Code': '',
-        'Manufacturer': 'Another Manufacturer',
-        'Category': categories.length > 1 ? categories[1].name : '',
+        'Manufacturer': 'Johnson & Johnson',
+        'Category': categories.length > 1 ? categories[1].name : 'Suplementos',
         'Subcategory 1': '',
         'Subcategory 2': '',
-        'Temperature Range': temperatureRanges.length > 1 ? temperatureRanges[1].range : '',
+        'Temperature Range': temperatureRanges.length > 1 ? temperatureRanges[1].range : '2-8°C',
         'Humidity': '',
         'Observations': ''
       }
     ];
 
-    const productsSheet = XLSX.utils.json_to_sheet(productsData);
-    XLSX.utils.book_append_sheet(workbook, productsSheet, 'Products');
+    // Add main sheets in the same order as working entry template
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(instructions), 'Instructions');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(productsData), 'Products');
 
-    // Reference data sheets - always add even if empty
-    const categoriesSheet = XLSX.utils.json_to_sheet(
-      categories.length > 0 ?
-      categories.map(cat => ({ Name: cat.name, Description: cat.description || '' })) :
-      [{ Name: 'No categories available', Description: '' }]
-    );
-    XLSX.utils.book_append_sheet(workbook, categoriesSheet, 'Categories');
+    // Reference data sheets with robust error handling - matching entry template pattern
+    console.log('📋 Adding reference data sheets...');
 
-    const subcategories1Sheet = XLSX.utils.json_to_sheet(
-      subcategories1.length > 0 ?
-      subcategories1.map(sub => ({ Name: sub.name, Description: sub.description || '' })) :
-      [{ Name: 'No subcategories available', Description: '' }]
-    );
-    XLSX.utils.book_append_sheet(workbook, subcategories1Sheet, 'Subcategories1');
+    try {
+      // Categories reference sheet
+      const categoriesData = categories.length > 0 ?
+        categories.map(cat => ({
+          Name: cat.name || 'Unknown',
+          Description: cat.description || 'N/A'
+        })) :
+        [
+          { Name: 'Medicamentos', Description: 'Pharmaceutical products' },
+          { Name: 'Suplementos', Description: 'Health supplements' },
+          { Name: 'Dispositivos', Description: 'Medical devices' }
+        ];
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(categoriesData), 'Categories');
 
-    const subcategories2Sheet = XLSX.utils.json_to_sheet(
-      subcategories2.length > 0 ?
-      subcategories2.map(sub => ({ Name: sub.name, Description: sub.description || '' })) :
-      [{ Name: 'No subcategories available', Description: '' }]
-    );
-    XLSX.utils.book_append_sheet(workbook, subcategories2Sheet, 'Subcategories2');
+      // Subcategories1 reference sheet
+      const subcategories1Data = subcategories1.length > 0 ?
+        subcategories1.map(sub => ({
+          Name: sub.name || 'Unknown',
+          Description: sub.description || 'N/A'
+        })) :
+        [
+          { Name: 'Analgesicos', Description: 'Pain relief medications' },
+          { Name: 'Antibioticos', Description: 'Antibiotic medications' },
+          { Name: 'Vitaminas', Description: 'Vitamin supplements' }
+        ];
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(subcategories1Data), 'Subcategories1');
 
-    const tempRangesSheet = XLSX.utils.json_to_sheet(
-      temperatureRanges.length > 0 ?
-      temperatureRanges.map(tr => ({
-        Range: tr.range,
-        'Min Celsius': tr.min_celsius,
-        'Max Celsius': tr.max_celsius
-      })) :
-      [{ Range: 'No temperature ranges available', 'Min Celsius': '', 'Max Celsius': '' }]
-    );
-    XLSX.utils.book_append_sheet(workbook, tempRangesSheet, 'Temperature_Ranges');
+      // Subcategories2 reference sheet
+      const subcategories2Data = subcategories2.length > 0 ?
+        subcategories2.map(sub => ({
+          Name: sub.name || 'Unknown',
+          Description: sub.description || 'N/A'
+        })) :
+        [
+          { Name: 'Tabletas', Description: 'Tablet form' },
+          { Name: 'Capsulas', Description: 'Capsule form' },
+          { Name: 'Jarabe', Description: 'Syrup form' }
+        ];
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(subcategories2Data), 'Subcategories2');
 
-    // Instructions sheet with detailed guidance
-    const instructionsData = [
-      { Field: 'Product Name', Required: 'YES', Description: 'Name of the product (e.g., "Paracetamol 500mg")' },
-      { Field: 'Product Code', Required: 'NO', Description: 'Unique product code. Leave empty for auto-generation (format: PRD-XXXXXXXX)' },
-      { Field: 'Manufacturer', Required: 'YES', Description: 'Product manufacturer name (e.g., "Pfizer", "Johnson & Johnson")' },
-      { Field: 'Category', Required: 'NO', Description: 'Product category - must match EXACTLY with Categories sheet values' },
-      { Field: 'Subcategory 1', Required: 'NO', Description: 'Product subcategory level 1 - must match EXACTLY with Subcategories1 sheet values' },
-      { Field: 'Subcategory 2', Required: 'NO', Description: 'Product subcategory level 2 - must match EXACTLY with Subcategories2 sheet values' },
-      { Field: 'Temperature Range', Required: 'NO', Description: 'Storage temperature range - must match EXACTLY with Temperature_Ranges sheet values' },
-      { Field: 'Humidity', Required: 'NO', Description: 'Storage humidity requirements (e.g., "60%", "45-65%")' },
-      { Field: 'Observations', Required: 'NO', Description: 'Additional notes, special handling instructions, or remarks' },
-      { Field: 'IMPORTANT NOTES', Required: '', Description: '1. Sheet MUST be named "Products" (case-sensitive)' },
-      { Field: '', Required: '', Description: '2. Category names are case-insensitive but must match reference data' },
-      { Field: '', Required: '', Description: '3. Product codes must be unique - duplicates will be rejected' },
-      { Field: '', Required: '', Description: '4. Document uploads not supported via Excel - add manually after import' },
-      { Field: '', Required: '', Description: '5. Delete example rows before uploading your data' }
+      // Temperature ranges reference sheet
+      const tempRangesData = temperatureRanges.length > 0 ?
+        temperatureRanges.map(tr => ({
+          Range: tr.range || 'Unknown',
+          'Min Celsius': tr.min_celsius || '',
+          'Max Celsius': tr.max_celsius || '',
+          Description: `${tr.min_celsius || 'N/A'}°C to ${tr.max_celsius || 'N/A'}°C`
+        })) :
+        [
+          { Range: '15-25°C', 'Min Celsius': '15', 'Max Celsius': '25', Description: 'Room temperature storage' },
+          { Range: '2-8°C', 'Min Celsius': '2', 'Max Celsius': '8', Description: 'Refrigerated storage' },
+          { Range: 'Ambiente', 'Min Celsius': '15', 'Max Celsius': '30', Description: 'Ambient temperature' }
+        ];
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(tempRangesData), 'Temperature_Ranges');
+
+      console.log('✅ Reference data sheets added successfully');
+    } catch (sheetError) {
+      console.error('❌ Error adding reference sheets:', sheetError);
+      // Add minimal fallback sheets to prevent corruption
+      const fallbackData = [{ Error: 'Failed to load reference data', Contact: 'Administrator' }];
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(fallbackData), 'Categories');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(fallbackData), 'Subcategories1');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(fallbackData), 'Subcategories2');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(fallbackData), 'Temperature_Ranges');
+    }
+
+    // Field reference sheet for detailed field information
+    const fieldReference = [
+      { Field: 'Product Name', Required: 'YES', Example: 'Paracetamol 500mg', Description: 'Full product name including dosage if applicable' },
+      { Field: 'Product Code', Required: 'NO', Example: 'PRD-001 or blank', Description: 'Unique product code. Leave empty for auto-generation (format: PRD-XXXXXXXX)' },
+      { Field: 'Manufacturer', Required: 'YES', Example: 'Pfizer', Description: 'Product manufacturer or brand name' },
+      { Field: 'Category', Required: 'NO', Example: 'Medicamentos', Description: 'Product category - must match EXACTLY with Categories sheet values' },
+      { Field: 'Subcategory 1', Required: 'NO', Example: 'Analgesicos', Description: 'Product subcategory level 1 - must match EXACTLY with Subcategories1 sheet values' },
+      { Field: 'Subcategory 2', Required: 'NO', Example: 'Tabletas', Description: 'Product subcategory level 2 - must match EXACTLY with Subcategories2 sheet values' },
+      { Field: 'Temperature Range', Required: 'NO', Example: '15-25°C', Description: 'Storage temperature range - must match EXACTLY with Temperature_Ranges sheet values' },
+      { Field: 'Humidity', Required: 'NO', Example: '60% or 45-65%', Description: 'Storage humidity requirements' },
+      { Field: 'Observations', Required: 'NO', Example: 'Store in dry place', Description: 'Additional notes, special handling instructions, or remarks' }
     ];
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(fieldReference), 'Field_Reference');
 
-    const instructionsSheet = XLSX.utils.json_to_sheet(instructionsData);
-    XLSX.utils.book_append_sheet(workbook, instructionsSheet, 'Instructions');
+    // Important notes sheet
+    const importantNotes = [
+      { Note: 'CRITICAL REQUIREMENTS', Detail: 'Sheet MUST be named "Products" (case-sensitive)' },
+      { Note: 'NAMING CONVENTION', Detail: 'Category names are case-insensitive but must match reference data exactly' },
+      { Note: 'UNIQUENESS', Detail: 'Product codes must be unique across the system - duplicates will be rejected' },
+      { Note: 'VALIDATION', Detail: 'All data will be validated against existing system records' },
+      { Note: 'LIMITATIONS', Detail: 'Document uploads not supported via Excel - add manually after import' },
+      { Note: 'PREPARATION', Detail: 'Delete all example rows before uploading your actual data' },
+      { Note: 'TESTING', Detail: 'Test with a small batch first before uploading large datasets' },
+      { Note: 'SUPPORT', Detail: 'Contact system administrator if you encounter validation errors' }
+    ];
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(importantNotes), 'Important_Notes');
 
-    // Generate buffer with explicit settings
+    // Generate buffer with explicit settings matching working entry template
+    console.log('📝 Generating Excel buffer...');
     const buffer = XLSX.write(workbook, {
       type: 'buffer',
-      bookType: 'xlsx',
-      compression: true
+      bookType: 'xlsx'
     });
+
+    if (!buffer || buffer.length === 0) {
+      throw new Error('Generated buffer is empty or invalid');
+    }
+
+    console.log(`✅ Product template generated successfully. Buffer size: ${buffer.length} bytes, Sheets: ${workbook.SheetNames.length}`);
 
     return {
       success: true,

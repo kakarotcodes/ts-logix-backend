@@ -162,9 +162,19 @@ async function getAllEntryOrders(
   if (organisationId) {
     whereConds.order = { organisation_id: organisationId };
   }
-  // CLIENT-specific filtering - clients can only see their own entry orders
-  if (userRole === "CLIENT" && userId) {
-    whereConds.created_by = userId;
+  // CLIENT-specific filtering - updated for multi-user support
+  if (userRole === "CLIENT") {
+    if (filters.client_id) {
+      whereConds.client_id = filters.client_id;
+
+      // If created_by filter is specified (non-primary user), add that constraint
+      if (filters.created_by) {
+        whereConds.created_by = filters.created_by;
+      }
+    } else if (userId) {
+      // Fallback: if no client_id, filter by created_by (old behavior)
+      whereConds.created_by = userId;
+    }
   }
   if (entryOrderNo) {
     whereConds.entry_order_no = { contains: entryOrderNo, mode: "insensitive" };
@@ -372,16 +382,37 @@ async function getEntryFormFields(userRole = null, userId = null) {
         },
       });
 
-      // ✅ NEW: Get simple client_users_data from the client record (as provided during creation)
-      usersPromise = prisma.client.findUnique({
-        where: { client_id: clientId },
+      // ✅ NEW: Get clientUsers for this client instead of deprecated client_users_data
+      usersPromise = prisma.clientUser.findMany({
+        where: {
+          client_id: clientId,
+          is_active: true
+        },
         select: {
-          client_users_data: true
+          client_user_id: true,
+          username: true,
+          is_primary: true,
+          user: {
+            select: {
+              id: true,
+              user_id: true,
+              first_name: true,
+              last_name: true,
+              email: true,
+            }
+          }
         }
-      }).then(client => {
-        // Return the simple client_users_data as provided during creation
-        // This will be the array like [{"name": "user 1"}, {"name": "user 2"}]
-        return client?.client_users_data || [];
+      }).then(clientUsers => {
+        // Transform clientUsers to match the expected user format
+        return clientUsers.map(cu => ({
+          id: cu.user.id,
+          user_id: cu.user.user_id,
+          first_name: cu.user.first_name,
+          last_name: cu.user.last_name,
+          email: cu.user.email,
+          username: cu.username,
+          is_primary: cu.is_primary,
+        }));
       });
     } else {
       // Client user account not found, return empty arrays
@@ -449,6 +480,44 @@ async function getEntryFormFields(userRole = null, userId = null) {
     });
   }
 
+  // ✅ NEW: Add clients and clientUsers queries
+  const clientsPromise = userRole !== "CLIENT" ?
+    prisma.client.findMany({
+      select: {
+        client_id: true,
+        client_type: true,
+        company_name: true,
+        first_names: true,
+        last_name: true,
+        email: true,
+        ruc: true,
+        individual_id: true,
+        is_active: true,
+      },
+    }) :
+    Promise.resolve([]);
+
+  const clientUsersPromise = userRole !== "CLIENT" ?
+    prisma.clientUser.findMany({
+      where: { is_active: true },
+      select: {
+        client_user_id: true,
+        client_id: true,
+        username: true,
+        is_primary: true,
+        is_active: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            first_name: true,
+            last_name: true,
+          }
+        },
+      },
+    }) :
+    Promise.resolve([]);
+
   const [
     origins,
     documentTypes,
@@ -456,6 +525,8 @@ async function getEntryFormFields(userRole = null, userId = null) {
     suppliers,
     products,
     temperatureRanges,
+    clients,
+    clientUsers,
   ] = await Promise.all([
     prisma.origin.findMany({
       select: {
@@ -484,6 +555,8 @@ async function getEntryFormFields(userRole = null, userId = null) {
         max_celsius: true,
       },
     }),
+    clientsPromise,
+    clientUsersPromise,
   ]);
 
   // Enum options for dropdowns
@@ -584,6 +657,9 @@ async function getEntryFormFields(userRole = null, userId = null) {
     products,
     // ✅ REMOVED: warehouses - no longer included per request
     temperatureRanges,
+    // ✅ NEW: Multi-user client support
+    clients,
+    clientUsers,
     // Enum options
     originTypes,
     documentTypeOptions,

@@ -1,0 +1,517 @@
+const { PrismaClient } = require("@prisma/client");
+const bcrypt = require("bcryptjs");
+const faker = require("@faker-js/faker").faker;
+const eventLogger = require("../eventlog/eventlog.service");
+
+const prisma = new PrismaClient();
+
+/**
+ * Create a new client (Juridical or Natural) with REQUIRED cell assignment - FIXED VERSION
+ */
+async function createClient(clientData, cellAssignmentData = {}) {
+  try {
+    // Validate cell assignment data is provided (now required)
+    if (!cellAssignmentData.cell_ids || !Array.isArray(cellAssignmentData.cell_ids) || cellAssignmentData.cell_ids.length === 0) {
+      throw new Error("Cell assignment is required when creating a client. Please provide at least one cell_id.");
+    }
+    if (!cellAssignmentData.warehouse_id) {
+      throw new Error("Warehouse ID is required for cell assignment when creating a client.");
+    }
+    if (!cellAssignmentData.assigned_by) {
+      throw new Error("Assigned by user ID is required for cell assignment when creating a client.");
+    }
+
+    // Validate ALL required fields based on client type
+    if (!clientData.client_type) {
+      throw new Error("Client type is required");
+    }
+
+    // Common required fields for all clients
+    if (!clientData.email) {
+      throw new Error("Email is required for all clients");
+    }
+    if (!clientData.address) {
+      throw new Error("Address is required for all clients");
+    }
+    if (!clientData.phone) {
+      throw new Error("Phone number is required for all clients");
+    }
+    if (!clientData.cell_phone) {
+      throw new Error("Cell phone number is required for all clients");
+    }
+
+    // Client type specific required fields
+    if (clientData.client_type === "JURIDICO") {
+      if (!clientData.company_name) {
+        throw new Error("Company name is required for juridical clients");
+      }
+      if (!clientData.ruc) {
+        throw new Error("RUC is required for juridical clients");
+      }
+      if (!clientData.company_type) {
+        throw new Error("Company type is required for juridical clients");
+      }
+      if (!clientData.establishment_type) {
+        throw new Error("Establishment type is required for juridical clients");
+      }
+    } else if (clientData.client_type === "NATURAL") {
+      if (!clientData.first_names) {
+        throw new Error("First names are required for natural clients");
+      }
+      if (!clientData.last_name) {
+        throw new Error("Last name is required for natural clients");
+      }
+      if (!clientData.mothers_last_name) {
+        throw new Error("Mother's last name is required for natural clients");
+      }
+      if (!clientData.individual_id) {
+        throw new Error("Individual ID is required for natural clients");
+      }
+      if (!clientData.date_of_birth) {
+        throw new Error("Date of birth is required for natural clients");
+      }
+    } else {
+      throw new Error("Invalid client type. Must be JURIDICO or NATURAL");
+    }
+
+    // Run all validations in parallel
+    const [
+      existingRucClient,
+      existingIdClient,
+      existingEmailClient,
+      warehouse,
+      cells,
+      existingAssignments
+    ] = await Promise.all([
+      // Check for duplicate RUC for juridical clients
+      clientData.client_type === "JURIDICO" && clientData.ruc
+        ? prisma.client.findFirst({
+            where: {
+              ruc: clientData.ruc,
+              client_type: "JURIDICO"
+            },
+            select: { client_id: true }
+          })
+        : Promise.resolve(null),
+      // Check for duplicate individual_id for natural clients
+      clientData.client_type === "NATURAL" && clientData.individual_id
+        ? prisma.client.findFirst({
+            where: {
+              individual_id: clientData.individual_id,
+              client_type: "NATURAL"
+            },
+            select: { client_id: true }
+          })
+        : Promise.resolve(null),
+      // Check for duplicate email
+      prisma.client.findFirst({
+        where: { email: clientData.email },
+        select: { client_id: true }
+      }),
+      // Validate warehouse exists
+      prisma.warehouse.findUnique({
+        where: { warehouse_id: cellAssignmentData.warehouse_id },
+        select: { warehouse_id: true, name: true }
+      }),
+      // Validate cells exist and are available
+      prisma.warehouseCell.findMany({
+        where: {
+          id: { in: cellAssignmentData.cell_ids },
+          warehouse_id: cellAssignmentData.warehouse_id,
+          status: "AVAILABLE",
+          cell_role: {
+            in: [
+              "STANDARD",     // Regular storage cells
+              "REJECTED",     // For RECHAZADOS (rejected products)
+              "SAMPLES",      // For CONTRAMUESTRAS (samples)
+              "RETURNS",      // For DEVOLUCIONES (returns)
+              "DAMAGED",      // For damaged products
+              "EXPIRED"       // For expired products
+            ]
+          }
+        },
+        select: { id: true, row: true, bay: true, position: true, cell_role: true }
+      }),
+      // Check for existing assignments for these cells
+      prisma.clientCellAssignment.findMany({
+        where: {
+          cell_id: { in: cellAssignmentData.cell_ids },
+          is_active: true
+        },
+        select: { cell_id: true }
+      })
+    ]);
+
+    // Quick validation checks
+    if (existingRucClient) {
+      throw new Error("A juridical client with this RUC already exists");
+    }
+    if (existingIdClient) {
+      throw new Error("A natural client with this ID already exists");
+    }
+    if (existingEmailClient) {
+      throw new Error("A client with this email already exists");
+    }
+    if (!warehouse) {
+      throw new Error("Warehouse not found");
+    }
+    if (cells.length !== cellAssignmentData.cell_ids.length) {
+      const foundCellIds = cells.map(c => c.id);
+      const missingCells = cellAssignmentData.cell_ids.filter(id => !foundCellIds.includes(id));
+      throw new Error(`Some cells are not available or don't exist in the specified warehouse: ${missingCells.join(', ')}`);
+    }
+    if (existingAssignments.length > 0) {
+      const assignedCellIds = existingAssignments.map(a => a.cell_id);
+      throw new Error(`Some cells are already assigned to other clients: ${assignedCellIds.join(', ')}`);
+    }
+
+    // Define valid fields for Client model
+    const validClientFields = [
+      'client_type',
+      'email',
+      'address',
+      'phone',
+      'cell_phone',
+      'active_state_id',
+      // Juridical fields
+      'company_name',
+      'company_type',
+      'establishment_type',
+      'ruc',
+      // Natural fields
+      'first_names',
+      'last_name',
+      'mothers_last_name',
+      'individual_id',
+      'date_of_birth'
+    ];
+
+    // Clean data based on client type and filter valid fields only
+    const cleanedData = {};
+
+    // Only include valid fields
+    validClientFields.forEach(field => {
+      if (clientData.hasOwnProperty(field)) {
+        cleanedData[field] = clientData[field];
+      }
+    });
+
+    if (clientData.client_type === "JURIDICO") {
+      // Clear natural fields for juridical clients
+      cleanedData.first_names = null;
+      cleanedData.last_name = null;
+      cleanedData.mothers_last_name = null;
+      cleanedData.individual_id = null;
+      cleanedData.date_of_birth = null;
+    } else if (clientData.client_type === "NATURAL") {
+      // Clear juridical fields for natural clients
+      cleanedData.company_name = null;
+      cleanedData.company_type = null;
+      cleanedData.establishment_type = null;
+      cleanedData.ruc = null;
+    }
+
+    // Parse date_of_birth if provided
+    if (cleanedData.date_of_birth) {
+      cleanedData.date_of_birth = new Date(cleanedData.date_of_birth);
+    }
+
+    // Generate client code
+    const nextClientCode = await generateNextClientCode();
+    const uniqueClientCode = await ensureUniqueClientCode(nextClientCode);
+
+    // ✅ NEW: Prepare client users data - create real users from client_users array
+    const clientUsers = [];
+    const defaultPassword = cleanedData.ruc || cleanedData.individual_id || 'TempPass123!';
+
+    if (clientData.client_users && Array.isArray(clientData.client_users) && clientData.client_users.length > 0) {
+      // Create real users from provided client_users array
+      for (let i = 0; i < clientData.client_users.length; i++) {
+        const userData = clientData.client_users[i];
+
+        // Generate username from name
+        const username = userData.name
+          .toLowerCase()
+          .replace(/\s+/g, '.')
+          .replace(/[^a-z0-9.]/g, '')
+          .substring(0, 20);
+
+        // Use client's password as initial password
+        const userPassword = userData.password || defaultPassword;
+
+        clientUsers.push({
+          username: username,
+          password: userPassword,
+          email: userData.email || `${username}@${cleanedData.email.split('@')[1]}`,
+          first_name: userData.name.split(' ')[0] || 'User',
+          last_name: userData.name.split(' ').slice(1).join(' ') || '',
+          is_primary: i === 0 // First user is primary
+        });
+      }
+    } else {
+      // No client users provided, create default primary user
+      const defaultUsername = cleanedData.ruc || cleanedData.individual_id || 'admin';
+      clientUsers.push({
+        username: defaultUsername,
+        password: defaultPassword,
+        email: cleanedData.email,
+        first_name: cleanedData.first_names || cleanedData.company_name?.split(' ')[0] || 'Client',
+        last_name: cleanedData.last_name || '',
+        is_primary: true
+      });
+    }
+
+    // Main transaction with simplified operations
+    const result = await prisma.$transaction(async (tx) => {
+      // Get creator and role info in parallel
+      const [creator, clientRole] = await Promise.all([
+        tx.user.findUnique({
+          where: { id: cellAssignmentData.assigned_by },
+          select: {
+            id: true,
+            organisation_id: true,
+            first_name: true,
+            last_name: true,
+            email: true
+          }
+        }),
+        tx.role.findUnique({
+          where: { name: "CLIENT" },
+          select: { role_id: true }
+        })
+      ]);
+
+      if (!creator) {
+        throw new Error("Creator user not found. Cannot create client without valid creator.");
+      }
+      if (!clientRole) {
+        throw new Error("CLIENT role not found in database.");
+      }
+
+      // Create client
+      const client = await tx.client.create({
+        data: {
+          ...cleanedData,
+          client_code: uniqueClientCode,
+          created_by: cellAssignmentData.assigned_by
+        },
+        select: {
+          client_id: true,
+          client_type: true,
+          client_code: true,
+          company_name: true,
+          first_names: true,
+          last_name: true,
+          email: true
+        }
+      });
+
+      // Create all users and client user relationships
+      const createdClientUsers = [];
+      for (const userData of clientUsers) {
+        const passwordHash = await bcrypt.hash(userData.password, 10);
+
+        // Create User account
+        const newUser = await tx.user.create({
+          data: {
+            user_id: userData.username,
+            email: userData.email,
+            password_hash: passwordHash,
+            role: { connect: { role_id: clientRole.role_id } },
+            organisation: { connect: { organisation_id: creator.organisation_id } },
+            first_name: userData.first_name,
+            last_name: userData.last_name
+          },
+          select: { id: true, user_id: true, email: true }
+        });
+
+        // Create ClientUser relationship
+        const clientUser = await tx.clientUser.create({
+          data: {
+            client_id: client.client_id,
+            user_id: newUser.id,
+            username: userData.username,
+            is_primary: userData.is_primary,
+            is_active: true,
+            created_by: cellAssignmentData.assigned_by,
+            notes: userData.is_primary
+              ? `Primary user created during client creation`
+              : `Additional user created during client creation`
+          }
+        });
+
+        createdClientUsers.push({
+          username: userData.username,
+          password: userData.password, // Store for credentials response
+          email: newUser.email,
+          is_primary: userData.is_primary
+        });
+      }
+
+      // Bulk create cell assignments
+      const cellAssignments = cellAssignmentData.cell_ids.map(cell_id => ({
+        client_id: client.client_id,
+        cell_id: cell_id,
+        warehouse_id: cellAssignmentData.warehouse_id,
+        assigned_by: cellAssignmentData.assigned_by,
+        notes: cellAssignmentData.notes || `Assigned during client creation`,
+        max_capacity: cellAssignmentData.max_capacity || 100.00
+      }));
+
+      const createdAssignments = await tx.clientCellAssignment.createMany({
+        data: cellAssignments
+      });
+
+      // Get complete client with relationships
+      const clientWithAssignments = await tx.client.findUnique({
+        where: { client_id: client.client_id },
+        include: {
+          creator: {
+            select: {
+              first_name: true,
+              last_name: true,
+              email: true
+            }
+          },
+          clientUsers: {
+            include: {
+              user: {
+                select: {
+                  user_id: true,
+                  email: true,
+                  first_name: true,
+                  last_name: true
+                }
+              }
+            }
+          },
+          cellAssignments: {
+            where: { is_active: true },
+            include: {
+              cell: {
+                select: {
+                  id: true,
+                  row: true,
+                  bay: true,
+                  position: true,
+                  cell_role: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      return {
+        client: clientWithAssignments,
+        users: createdClientUsers,
+        cellAssignments: createdAssignments.count
+      };
+    }, {
+      timeout: 30000 // Increase timeout for large cell assignments
+    });
+
+    // Log successful client creation
+    const clientName = result.client.client_type === "JURIDICO"
+      ? result.client.company_name
+      : `${result.client.first_names} ${result.client.last_name}`;
+
+    console.log(`✅ Client created successfully: ${clientName} (${result.client.client_id})`);
+    console.log(`📋 Created ${result.users.length} user(s) for this client`);
+    console.log(`🏢 Assigned ${result.cellAssignments} cell(s) in warehouse ${cellAssignmentData.warehouse_id}`);
+
+    // Return client data with user credentials for handover
+    return {
+      ...result.client,
+      _credentials: result.users, // Include all user credentials for handover
+      _cellAssignments: result.cellAssignments
+    };
+
+  } catch (error) {
+    console.error("Error in createClient service:", error);
+    throw error;
+  }
+}
+
+// Helper function to generate next client code
+async function generateNextClientCode() {
+  try {
+    const latestClient = await prisma.client.findFirst({
+      orderBy: {
+        created_at: 'desc'
+      },
+      select: {
+        client_code: true
+      }
+    });
+
+    if (!latestClient || !latestClient.client_code) {
+      return 'C001'; // First client
+    }
+
+    // Extract the number from the client code (e.g., C001 -> 001 -> 1)
+    const latestNumber = parseInt(latestClient.client_code.substring(1));
+
+    if (isNaN(latestNumber)) {
+      return 'C001'; // Fallback if parsing fails
+    }
+
+    // Generate next number with proper padding
+    const nextNumber = latestNumber + 1;
+    return `C${nextNumber.toString().padStart(3, '0')}`;
+
+  } catch (error) {
+    console.error("Error generating client code:", error);
+
+    // Fallback: count all clients and add 1
+    try {
+      const clientCount = await prisma.client.count();
+      const nextNumber = clientCount + 1;
+      return `C${nextNumber.toString().padStart(3, '0')}`;
+    } catch (fallbackError) {
+      console.error("Fallback client code generation failed:", fallbackError);
+      return `C001`;
+    }
+  }
+}
+
+// Ensure client code uniqueness
+async function ensureUniqueClientCode(preferredCode) {
+  try {
+    let attemptCode = preferredCode;
+    let attempt = 0;
+    const maxAttempts = 1000; // Prevent infinite loops
+
+    while (attempt < maxAttempts) {
+      const existingClient = await prisma.client.findFirst({
+        where: { client_code: attemptCode },
+        select: { client_id: true }
+      });
+
+      if (!existingClient) {
+        return attemptCode; // Code is unique
+      }
+
+      // Generate next sequential code
+      attempt++;
+      const baseNumber = parseInt(preferredCode.substring(1)) + attempt;
+      attemptCode = `C${baseNumber.toString().padStart(3, '0')}`;
+    }
+
+    // If we've exhausted attempts, use timestamp-based fallback
+    const timestamp = Date.now().toString().slice(-3);
+    return `C${timestamp}`;
+
+  } catch (error) {
+    console.error("Error ensuring unique client code:", error);
+    // Timestamp-based fallback
+    const timestamp = Date.now().toString().slice(-3);
+    return `C${timestamp}`;
+  }
+}
+
+module.exports = {
+  createClient,
+  generateNextClientCode,
+  ensureUniqueClientCode
+};
