@@ -740,11 +740,9 @@ async function createClients() {
           { weight: 15, value: inactiveState }
         ]),
         
-        // ✅ NEW: Client ownership and auto-generated credentials
+        // ✅ NEW: Client ownership
         created_by: creator.id,
-        auto_username: autoUsername,
-        auto_password_hash: autoPasswordHash, // Store hashed password
-        
+
         // Commercial client fields (all required)
         company_name: companyName,
         company_type: faker.helpers.arrayElement(["PRIVADO", "PUBLICO"]),
@@ -783,14 +781,21 @@ async function createClients() {
           assigned_clients: [], // Clients don't need client assignments
         }
       });
-      
-      // Link client to user account
-      await prisma.client.update({
-        where: { client_id: client.client_id },
-        data: { client_user_id: clientUser.id }
+
+      // ✅ NEW: Create ClientUser relationship (matches new schema)
+      await prisma.clientUser.create({
+        data: {
+          client_id: client.client_id,
+          user_id: clientUser.id,
+          username: autoUsername,
+          is_primary: true,
+          is_active: true,
+          created_by: creator.id,
+          notes: `Primary user created during client seeding for ${companyName}`
+        }
       });
       
-      createdClients.push({ ...client, plainPassword: autoPassword });
+      createdClients.push({ ...client, autoUsername: autoUsername, plainPassword: autoPassword });
     }
     
     // Create individual clients (40% of total)
@@ -819,11 +824,9 @@ async function createClients() {
           { weight: 10, value: inactiveState }
         ]),
         
-        // ✅ NEW: Client ownership and auto-generated credentials
+        // ✅ NEW: Client ownership
         created_by: creator.id,
-        auto_username: autoUsername,
-        auto_password_hash: autoPasswordHash, // Store hashed password
-        
+
         // Individual client fields
         first_names: `${firstName} ${faker.person.middleName()}`,
         last_name: lastName,
@@ -856,14 +859,21 @@ async function createClients() {
           assigned_clients: [], // Clients don't need client assignments
         }
       });
-      
-      // Link client to user account
-      await prisma.client.update({
-        where: { client_id: client.client_id },
-        data: { client_user_id: clientUser.id }
+
+      // ✅ NEW: Create ClientUser relationship (matches new schema)
+      await prisma.clientUser.create({
+        data: {
+          client_id: client.client_id,
+          user_id: clientUser.id,
+          username: autoUsername,
+          is_primary: true,
+          is_active: true,
+          created_by: creator.id,
+          notes: `Primary user created during client seeding for ${firstName} ${lastName}`
+        }
       });
       
-      createdClients.push({ ...client, plainPassword: autoPassword });
+      createdClients.push({ ...client, autoUsername: autoUsername, plainPassword: autoPassword });
     }
     
     console.log(`✅ Clients created with auto-generated credentials: ${commercialCount} commercial, ${individualCount} individual`);
@@ -873,7 +883,7 @@ async function createClients() {
     const credentialsSummary = createdClients.map(client => ({
       client_id: client.client_id,
       client_name: client.company_name || `${client.first_names} ${client.last_name}`,
-      username: client.auto_username,
+      username: client.autoUsername, // Updated field name
       password: client.plainPassword, // Only in seed log, not stored in DB
       created_by: client.created_by
     }));
