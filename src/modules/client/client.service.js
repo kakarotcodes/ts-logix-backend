@@ -424,12 +424,7 @@ async function createClient(clientData, cellAssignmentData = {}) {
         cleanedData[field] = clientData[field];
       }
     });
-    
-    // ✅ NEW: Store client_users_data if provided in the request
-    if (clientData.client_users && Array.isArray(clientData.client_users)) {
-      cleanedData.client_users_data = clientData.client_users;
-    }
-    
+
     if (clientData.client_type === "JURIDICO") {
       // Clear natural fields for juridical clients
       cleanedData.first_names = null;
@@ -454,12 +449,24 @@ async function createClient(clientData, cellAssignmentData = {}) {
     const nextClientCode = await generateNextClientCode();
     const uniqueClientCode = await ensureUniqueClientCode(nextClientCode);
 
-    // ✅ NEW: Prepare client users data - create real users from client_users array
+    // ✅ NEW: Prepare client users data - DUAL LOGIN SYSTEM
+    // ALWAYS create master user + optional individual users
     const clientUsers = [];
     const defaultPassword = cleanedData.ruc || cleanedData.individual_id || 'TempPass123!';
 
+    // STEP 1: ALWAYS create MASTER user (client-level login)
+    const masterUsername = cleanedData.ruc || cleanedData.individual_id || 'admin';
+    clientUsers.push({
+      username: masterUsername,
+      password: defaultPassword, // RUC or individual_id as password
+      email: cleanedData.email,
+      first_name: cleanedData.first_names || cleanedData.company_name?.split(' ')[0] || 'Client',
+      last_name: cleanedData.last_name || '',
+      is_primary: true // MASTER USER - Primary client account
+    });
+
+    // STEP 2: Create additional individual users (if provided)
     if (clientData.client_users && Array.isArray(clientData.client_users) && clientData.client_users.length > 0) {
-      // Create real users from provided client_users array
       for (let i = 0; i < clientData.client_users.length; i++) {
         const userData = clientData.client_users[i];
 
@@ -470,7 +477,7 @@ async function createClient(clientData, cellAssignmentData = {}) {
           .replace(/[^a-z0-9.]/g, '')
           .substring(0, 20);
 
-        // Use client's password as initial password
+        // Use user's password or default
         const userPassword = userData.password || defaultPassword;
 
         clientUsers.push({
@@ -479,20 +486,9 @@ async function createClient(clientData, cellAssignmentData = {}) {
           email: userData.email || `${username}@${cleanedData.email.split('@')[1]}`,
           first_name: userData.name.split(' ')[0] || 'User',
           last_name: userData.name.split(' ').slice(1).join(' ') || '',
-          is_primary: i === 0 // First user is primary
+          is_primary: false // SUB-USER - Individual client user
         });
       }
-    } else {
-      // No client users provided, create default primary user
-      const defaultUsername = cleanedData.ruc || cleanedData.individual_id || 'admin';
-      clientUsers.push({
-        username: defaultUsername,
-        password: defaultPassword,
-        email: cleanedData.email,
-        first_name: cleanedData.first_names || cleanedData.company_name?.split(' ')[0] || 'Client',
-        last_name: cleanedData.last_name || '',
-        is_primary: true
-      });
     }
 
     // ✅ OPTIMIZATION 3: Simplified transaction with bulk operations
@@ -942,29 +938,6 @@ async function getClientById(clientId) {
 
     if (!client) {
       throw new Error("Client not found");
-    }
-
-    // ✅ NEW: Sync client_users_data with actual clientUsers relation
-    if (client.clientUsers && client.clientUsers.length > 0) {
-      const updatedClientUsersData = client.clientUsers.map(cu => ({
-        name: cu.user.email.split('@')[0] || cu.username, // Extract name from email
-        email: cu.user.email,
-        username: cu.username,
-        is_primary: cu.is_primary,
-        is_active: cu.is_active,
-        created_at: cu.created_at
-      }));
-
-      // Update the client_users_data field in the database
-      await prisma.client.update({
-        where: { client_id: client.client_id },
-        data: {
-          client_users_data: updatedClientUsersData
-        }
-      });
-
-      // Update the returned client object
-      client.client_users_data = updatedClientUsersData;
     }
 
     return client;
@@ -2549,9 +2522,6 @@ async function changeClientUserPasswordByUsername(clientId, username, newPasswor
       return updatedClientUser;
     });
 
-    // Update the client_users_data field to sync with the change
-    await syncClientUsersData(clientId);
-
     return {
       success: true,
       message: "Client user password changed successfully",
@@ -2567,53 +2537,6 @@ async function changeClientUserPasswordByUsername(clientId, username, newPasswor
   } catch (error) {
     console.error("Error in changeClientUserPasswordByUsername service:", error);
     throw error;
-  }
-}
-
-/**
- * Helper function to sync client_users_data with actual clientUsers relation
- */
-async function syncClientUsersData(clientId) {
-  try {
-    const client = await prisma.client.findUnique({
-      where: { client_id: clientId },
-      include: {
-        clientUsers: {
-          include: {
-            user: {
-              select: {
-                email: true
-              }
-            }
-          },
-          orderBy: [
-            { is_primary: 'desc' },
-            { created_at: 'asc' }
-          ]
-        }
-      }
-    });
-
-    if (client && client.clientUsers && client.clientUsers.length > 0) {
-      const updatedClientUsersData = client.clientUsers.map(cu => ({
-        name: cu.user.email.split('@')[0] || cu.username,
-        email: cu.user.email,
-        username: cu.username,
-        is_primary: cu.is_primary,
-        is_active: cu.is_active,
-        created_at: cu.created_at
-      }));
-
-      await prisma.client.update({
-        where: { client_id: clientId },
-        data: {
-          client_users_data: updatedClientUsersData
-        }
-      });
-    }
-  } catch (error) {
-    console.error("Error syncing client_users_data:", error);
-    // Don't throw error here to avoid breaking the main operation
   }
 }
 

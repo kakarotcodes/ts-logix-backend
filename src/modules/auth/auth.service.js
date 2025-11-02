@@ -212,6 +212,11 @@ async function loginUser(userId, plainPassword, ipAddress = null, userAgent = nu
     // ✅ Add client data for CLIENT role users
     if (clientData) {
       response.client = clientData;
+
+      // ✅ Add is_primary_user flag for CLIENT users
+      if (user.role.name === 'CLIENT' && user.clientUserAccounts.length > 0) {
+        response.is_primary_user = user.clientUserAccounts[0].is_primary;
+      }
     }
 
     // Log successful login

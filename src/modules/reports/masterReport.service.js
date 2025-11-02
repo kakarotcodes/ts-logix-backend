@@ -252,15 +252,6 @@ function buildWhereConditions(filters, userContext) {
           }
         },
         {
-          source_allocation: {
-            entry_order_product: {
-              entry_order: {
-                customer_id: userContext.userId
-              }
-            }
-          }
-        },
-        {
           departure_order_product: {
             departure_order: {
               client_id: userContext.userId
@@ -500,8 +491,12 @@ async function transformToMasterReport(transactions, unallocatedInventory = []) 
  */
 async function getUnallocatedInventory(filters, userContext) {
   let whereConditions = {
-    current_quantity: { gt: 0 },
-    status: 'ACTIVE'
+    status: 'ACTIVE',
+    inventory: {
+      some: {
+        current_quantity: { gt: 0 }
+      }
+    }
   };
 
   // Apply similar filters as main query
@@ -545,10 +540,7 @@ async function getUnallocatedInventory(filters, userContext) {
       whereConditions.entry_order_product = {};
     }
     whereConditions.entry_order_product.entry_order = {
-      OR: [
-        { client_id: userContext.userId },
-        { customer_id: userContext.userId }
-      ]
+      client_id: userContext.userId
     };
   }
 
@@ -557,6 +549,7 @@ async function getUnallocatedInventory(filters, userContext) {
     include: {
       entry_order_product: {
         include: {
+          supplier: true,
           product: {
             include: {
               category: true,
@@ -566,10 +559,8 @@ async function getUnallocatedInventory(filters, userContext) {
           },
           entry_order: {
             include: {
-              supplier: true,
               client: true,
-              customer: true,
-              created_by: {
+              creator: {
                 select: {
                   id: true,
                   first_name: true,
@@ -586,6 +577,7 @@ async function getUnallocatedInventory(filters, userContext) {
           warehouse: true
         }
       },
+      inventory: true,
       departureAllocations: true
     }
   });

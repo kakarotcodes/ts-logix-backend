@@ -88,17 +88,45 @@ async function getDepartureFormFields(userRole = null, userId = null) {
 
       if (clientUser?.client) {
         const clientId = clientUser.client.client_id;
-        
-        // ✅ NEW: Get simple client_users_data from the client record (as provided during creation)
-        usersPromise = prisma.client.findUnique({
-          where: { client_id: clientId },
-          select: {
-            client_users_data: true
+
+        // ✅ Get client users with role-based filtering
+        // Primary users see all client users, non-primary users see only themselves
+        const whereClause = {
+          client_id: clientId,
+          is_active: true
+        };
+
+        // If non-primary user, filter to show only themselves
+        if (!clientUser.is_primary) {
+          whereClause.user_id = userId;
+        }
+
+        usersPromise = prisma.clientUser.findMany({
+          where: whereClause,
+          include: {
+            user: {
+              select: {
+                id: true,
+                user_id: true,
+                first_name: true,
+                last_name: true,
+                email: true,
+                role: { select: { name: true } }
+              }
+            }
           }
-        }).then(client => {
-          // Return the simple client_users_data as provided during creation
-          // This will be the array like [{"name": "user 1"}, {"name": "user 2"}]
-          return client?.client_users_data || [];
+        }).then(clientUsers => {
+          // Transform to match expected format for dropdown
+          return clientUsers.map(cu => ({
+            id: cu.user.id,
+            user_id: cu.user.user_id,
+            first_name: cu.user.first_name,
+            last_name: cu.user.last_name,
+            email: cu.user.email,
+            username: cu.username,
+            is_primary: cu.is_primary,
+            role: cu.user.role
+          }));
         });
       } else {
         // Client user account not found, return empty array
@@ -2206,15 +2234,39 @@ async function batchDispatchDepartureOrders(departureOrderIds, userId, userRole,
 async function processInventoryDispatch(departureOrderId, validatedCells, userId, dispatchData) {
   return await prisma.$transaction(async (tx) => {
     const cellAllocations = [];
-    
+
+    // ✅ CRITICAL FIX: Get departure order with products to create departureAllocation records
+    const departureOrder = await tx.departureOrder.findUnique({
+      where: { departure_order_id: departureOrderId },
+      include: {
+        products: {
+          select: {
+            departure_order_product_id: true,
+            product_id: true,
+            product_code: true
+          }
+        }
+      }
+    });
+
+    if (!departureOrder) {
+      throw new Error(`Departure order ${departureOrderId} not found`);
+    }
+
+    // Create a map of product_id to departure_order_product_id for quick lookup
+    const productIdMap = new Map();
+    departureOrder.products.forEach(p => {
+      productIdMap.set(p.product_id, p.departure_order_product_id);
+    });
+
     for (const cell of validatedCells) {
       // ✅ Calculate proportional package quantity
-      const originalPackageRatio = cell.available_package_qty > 0 ? 
+      const originalPackageRatio = cell.available_package_qty > 0 ?
         cell.available_package_qty / cell.available_qty : 1;
       const requestedPackageQty = Math.ceil(cell.requested_qty * originalPackageRatio);
-      
+
       // ✅ Calculate proportional volume if available
-      const originalVolumeRatio = cell.available_volume > 0 ? 
+      const originalVolumeRatio = cell.available_volume > 0 ?
         cell.available_volume / cell.available_qty : 0;
       const requestedVolume = cell.requested_qty * originalVolumeRatio;
 
@@ -2229,6 +2281,34 @@ async function processInventoryDispatch(departureOrderId, validatedCells, userId
           status: cell.will_be_empty ? "DEPLETED" : "AVAILABLE",
         },
       });
+
+      // ✅ CRITICAL FIX: Create departureAllocation record for master report traceability
+      const departureOrderProductId = productIdMap.get(cell.product_id);
+      if (departureOrderProductId) {
+        await tx.departureAllocation.create({
+          data: {
+            departure_order_id: departureOrderId,
+            departure_order_product_id: departureOrderProductId,
+            source_allocation_id: cell.allocation_id,
+            allocated_quantity: cell.requested_qty,
+            allocated_packages: requestedPackageQty,
+            allocated_pallets: null, // Not tracked in this flow
+            presentation: cell.presentation || 'CAJA',
+            allocated_weight: cell.requested_weight,
+            allocated_volume: requestedVolume > 0 ? requestedVolume : null,
+            cell_id: cell.cell_id,
+            product_status: cell.product_status || 'PAL_NORMAL',
+            status_code: cell.status_code || 37,
+            guide_number: cell.guide_number || null,
+            observations: cell.observations || dispatchData.dispatch_notes || null,
+            allocated_by: userId,
+            allocated_at: new Date(),
+            status: 'ACTIVE',
+          }
+        });
+      } else {
+        console.warn(`⚠️ Could not find departure_order_product_id for product_id: ${cell.product_id}. Skipping departureAllocation creation.`);
+      }
 
       // Create cell assignment with packaging_code
       await tx.cellAssignment.create({

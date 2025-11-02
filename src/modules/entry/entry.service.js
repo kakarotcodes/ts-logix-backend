@@ -382,12 +382,20 @@ async function getEntryFormFields(userRole = null, userId = null) {
         },
       });
 
-      // ✅ NEW: Get clientUsers for this client instead of deprecated client_users_data
+      // ✅ Get clientUsers for this client with role-based filtering
+      // Primary users see all client users, non-primary users see only themselves
+      const whereClause = {
+        client_id: clientId,
+        is_active: true
+      };
+
+      // If non-primary user, filter to show only themselves
+      if (!clientUser.is_primary) {
+        whereClause.user_id = userId;
+      }
+
       usersPromise = prisma.clientUser.findMany({
-        where: {
-          client_id: clientId,
-          is_active: true
-        },
+        where: whereClause,
         select: {
           client_user_id: true,
           username: true,
@@ -699,15 +707,15 @@ async function getCurrentEntryOrderNo() {
 /**
  * Get single entry order by order number with full details
  */
-async function getEntryOrderByNo(orderNo, organisationId = null, userRole = null, userId = null) {
+async function getEntryOrderByNo(orderNo, organisationId = null, userRole = null, clientId = null) {
   const where = { entry_order_no: orderNo };
   if (organisationId) {
     where.order = { organisation_id: organisationId };
   }
-  
-  // ✅ NEW: CLIENT-specific filtering - clients can only see their own entry orders
-  if (userRole === "CLIENT" && userId) {
-    where.created_by = userId;
+
+  // ✅ CLIENT-specific filtering - all users under same client can see all client orders
+  if (userRole === "CLIENT" && clientId) {
+    where.client_id = clientId;
   }
 
   const order = await prisma.entryOrder.findFirst({

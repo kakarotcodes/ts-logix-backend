@@ -18,7 +18,8 @@ async function getWarehouseReport(req, res) {
       product_name: req.query.product_name || null,
       product_code: req.query.product_code || null,
       warehouse_id: req.query.warehouse_id || null,
-      quality_status: req.query.quality_status || null
+      quality_status: req.query.quality_status || null,
+      include_depleted: req.query.include_depleted // Default: true (show all inventory including depleted)
     };
 
     // Get user context from JWT token

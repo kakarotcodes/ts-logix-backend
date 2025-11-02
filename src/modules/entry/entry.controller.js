@@ -456,17 +456,13 @@ async function getAllEntryOrders(req, res) {
     // ✅ NEW: Add client-specific filtering for CLIENT users
     if (userRole === "CLIENT") {
       const clientId = req.user?.client_id;
-      const isPrimaryUser = req.user?.is_primary_user;
 
       if (!clientId) {
         return res.status(403).json({ message: "Client identification required. Please log in again." });
       }
 
-      // Primary users see all orders for their client, non-primary users see only their own orders
+      // ✅ All users under the same client see ALL orders for that client
       filters.client_id = clientId;
-      if (!isPrimaryUser) {
-        filters.created_by = req.user?.id; // Non-primary users see only their own orders
-      }
     }
 
     const result = await entryService.getAllEntryOrders(
@@ -558,12 +554,14 @@ async function getEntryOrderByNo(req, res) {
     }
 
     const filterOrg = (userRole === "ADMIN" || userRole === "WAREHOUSE_INCHARGE") ? null : organisationId;
-    const entryOrder = await entryService.getEntryOrderByNo(orderNo, filterOrg, userRole, req.user?.id);
+    // ✅ Pass client_id for CLIENT users instead of user_id
+    const clientId = userRole === "CLIENT" ? req.user?.client_id : null;
+    const entryOrder = await entryService.getEntryOrderByNo(orderNo, filterOrg, userRole, clientId);
 
     if (!entryOrder) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Entry order not found" 
+        message: "Entry order not found"
       });
     }
 

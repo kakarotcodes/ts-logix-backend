@@ -1355,30 +1355,13 @@ async function createComprehensiveDepartureOrder(req, res) {
       });
     }
 
-    // Special handling for CLIENT role - map customer_id (client user name) to client_id
+    // ✅ Special handling for CLIENT role - validate client_id matches authenticated user
     if (userRole === 'CLIENT') {
       try {
-        // Get the client associated with this authenticated user
-        const { PrismaClient } = require('@prisma/client');
-        const prisma = new PrismaClient();
-        
-        const clientUser = await prisma.clientUser.findFirst({
-          where: { 
-            user_id: userId,
-            is_active: true
-          },
-          include: {
-            client: {
-              select: {
-                client_id: true,
-                company_name: true,
-                client_users_data: true
-              }
-            }
-          }
-        });
+        // Get the client associated with this authenticated user from JWT
+        const clientIdFromToken = req.user?.client_id;
 
-        if (!clientUser?.client) {
+        if (!clientIdFromToken) {
           return res.status(403).json({
             success: false,
             message: "Client account not found for this user",
@@ -1386,11 +1369,9 @@ async function createComprehensiveDepartureOrder(req, res) {
           });
         }
 
-        const client = clientUser.client;
-        
-        // If client_id is already provided, validate it matches the user's client
+        // If client_id is provided in request, validate it matches the user's client
         if (req.body.client_id) {
-          if (req.body.client_id !== client.client_id) {
+          if (req.body.client_id !== clientIdFromToken) {
             return res.status(403).json({
               success: false,
               message: "Access denied: Cannot create orders for different client",
@@ -1398,52 +1379,11 @@ async function createComprehensiveDepartureOrder(req, res) {
             });
           }
           // client_id is valid, continue
-        } 
-        // If customer_id is provided (client user name), map it to client_id
-        else if (req.body.customer_id) {
-          const clientUsersData = client.client_users_data || [];
-          
-          // Check if the customer_id matches any client user name
-          const matchingUser = clientUsersData.find(user => 
-            user.name === req.body.customer_id
-          );
-          
-          if (!matchingUser) {
-            return res.status(400).json({
-              success: false,
-              message: "Invalid client user name provided",
-              error: `Client user "${req.body.customer_id}" not found`,
-              available_client_users: clientUsersData.map(user => user.name),
-              client_info: {
-                client_id: client.client_id,
-                company_name: client.company_name
-              }
-            });
-          }
-          
-          // Map customer_id (client user name) to client_id
-          const originalCustomerId = req.body.customer_id;
-          req.body.client_id = client.client_id;
-          delete req.body.customer_id; // Remove customer_id to avoid conflicts
-          
-          console.log(`✅ Mapped client user "${originalCustomerId}" to client_id: ${client.client_id}`);
-        } 
-        // Neither client_id nor customer_id provided
-        else {
-          return res.status(400).json({
-            success: false,
-            message: "Client identification required",
-            error: "Please provide either client_id or customer_id (client user name)",
-            available_client_users: client.client_users_data?.map(user => user.name) || [],
-            client_info: {
-              client_id: client.client_id,
-              company_name: client.company_name,
-              auto_assign_note: "You can omit both fields to auto-assign to your client account"
-            }
-          });
+        } else {
+          // If no client_id provided, auto-populate from JWT token
+          req.body.client_id = clientIdFromToken;
+          console.log(`✅ Auto-assigned client_id from JWT: ${clientIdFromToken}`);
         }
-
-        await prisma.$disconnect();
         
       } catch (error) {
         console.error("Error mapping client user to client_id:", error);

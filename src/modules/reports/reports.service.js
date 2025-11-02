@@ -12,25 +12,38 @@ const prisma = new PrismaClient();
  * @param {string} filters.product_code - Product code filter
  * @param {string} filters.warehouse_id - Warehouse ID filter
  * @param {string} filters.quality_status - Quality status filter
+ * @param {string} filters.include_depleted - Include depleted inventory (default: true)
  * @param {Object} userContext - User context for role-based filtering
  * @returns {Object} Warehouse report data
  */
 async function generateWarehouseReport(filters = {}, userContext = {}) {
   const startTime = Date.now();
   console.log(`📊 WAREHOUSE REPORT: Starting report generation at ${new Date().toISOString()}`);
-  
+
   try {
     const { userId, userRole } = userContext;
-    
+
     // ✅ Build where clause for inventory allocations
+    // Default to including depleted inventory unless explicitly set to false
+    const includeDepleted = filters.include_depleted !== 'false' && filters.include_depleted !== false;
+
     const whereClause = {
-      status: "ACTIVE",
-      inventory: {
+      status: "ACTIVE"
+    };
+
+    // ✅ Filter by inventory quantity (include depleted if requested)
+    if (!includeDepleted) {
+      whereClause.inventory = {
         some: {
           current_quantity: { gt: 0 }
         }
-      }
-    };
+      };
+    } else {
+      // Include all inventory (depleted and active)
+      whereClause.inventory = {
+        some: {}
+      };
+    }
 
     // ✅ Date range filtering
     if (filters.date_from || filters.date_to) {
@@ -192,7 +205,8 @@ async function generateWarehouseReport(filters = {}, userContext = {}) {
       where: whereClause,
       include: {
         inventory: {
-          where: {
+          // Only filter by current_quantity if depleted inventory is excluded
+          where: includeDepleted ? {} : {
             current_quantity: { gt: 0 }
           },
           select: {
