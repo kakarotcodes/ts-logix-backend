@@ -92,7 +92,7 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
     ];
 
     requiredFields.forEach(field => {
-      if (!row[field] || String(row[field]).trim() === '') {
+      if (row[field] === undefined || row[field] === null || String(row[field]).trim() === '') {
         rowErrors.push(`Row ${rowNumber}: ${field} is required`);
       }
     });
@@ -143,7 +143,7 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
     ];
 
     requiredFields.forEach(field => {
-      if (!row[field] || String(row[field]).trim() === '') {
+      if (row[field] === undefined || row[field] === null || String(row[field]).trim() === '') {
         rowErrors.push(`Row ${rowNumber}: ${field} is required`);
       }
     });
@@ -194,7 +194,7 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
     const requiredFields = ['Order Index', 'Document Type', 'File Name'];
 
     requiredFields.forEach(field => {
-      if (!row[field] || String(row[field]).trim() === '') {
+      if (row[field] === undefined || row[field] === null || String(row[field]).trim() === '') {
         rowErrors.push(`Row ${rowNumber}: ${field} is required`);
       }
     });

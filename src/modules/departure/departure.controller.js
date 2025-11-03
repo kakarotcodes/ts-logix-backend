@@ -2962,10 +2962,11 @@ async function processBulkDepartureOrders(req, res) {
       'BULK_DEPARTURE_UPLOAD_COMPLETED',
       'BulkDepartureUpload',
       null,
-      `Bulk departure order upload completed - ${result.summary.successful_orders} orders created`,
+      `Bulk departure order upload completed - ${result.successful_orders?.length || 0} orders created`,
       null,
       {
-        ...result.summary,
+        successful_orders: result.successful_orders?.length || 0,
+        failed_orders: result.failed_orders?.length || 0,
         user_id: userId,
         user_role: userRole,
         organisation_id: organisationId
@@ -2974,7 +2975,7 @@ async function processBulkDepartureOrders(req, res) {
 
     return res.status(200).json({
       success: true,
-      message: "Bulk departure orders processed successfully",
+      message: `Successfully processed ${result.successful_orders?.length || 0} out of ${(result.successful_orders?.length || 0) + (result.failed_orders?.length || 0)} orders`,
       data: result
     });
 
