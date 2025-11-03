@@ -1149,12 +1149,12 @@ async function updateEntryOrder(req, res) {
 async function processBulkEntryOrders(req, res) {
   try {
     console.log('🔍 DEBUG req.user:', req.user);
-    // Use the actual warehouse incharge user ID from database since JWT contains stale ID
-    const actualUserId = '0c615596-235c-4edd-a25f-2263e48bbdeb'; // wh_incharge1
+    // Use the actual user ID from the JWT token
+    const actualUserId = req.user.id;
     const { role: userRole } = req.user;
 
-    // Create or use a valid organisation_id since JWT contains stale one
-    const validOrganisationId = 'aa11bb22-3333-4444-5555-666677778888';
+    // Use the organisation ID from the JWT token
+    const validOrganisationId = req.user.organisation_id;
 
     if (!req.file) {
       return res.status(400).json({

@@ -350,6 +350,7 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
     if (s.name) supplierNameToId.set(s.name.toLowerCase().trim(), s.supplier_id);
   });
 
+
   // Valid presentation and temperature options (updated to match database dropdown options)
   const validPresentations = new Set(['CAJA', 'PALETA', 'SACO', 'UNIDAD', 'PAQUETE', 'TAMBOS', 'BULTO', 'OTRO']);
   const validTemperatureRanges = new Set(['RANGE_15_30', 'RANGE_15_25', 'RANGE_2_8', 'AMBIENTE']);
