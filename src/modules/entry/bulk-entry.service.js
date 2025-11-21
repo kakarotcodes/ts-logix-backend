@@ -542,8 +542,10 @@ async function processOrdersInBatches(orderHeaders, orderProducts, userId, userR
 
   // Get the starting order number for the batch
   const baseOrderNo = await getCurrentEntryOrderNo();
-  const yearPrefix = baseOrderNo.substring(0, 7); // "OI20252"
-  const startingCount = parseInt(baseOrderNo.substring(7)); // Extract the number part
+
+  // Extract year prefix (e.g., "OI2025") and starting count
+  const yearPrefix = baseOrderNo.substring(0, 6); // "OI2025"
+  const startingCount = parseInt(baseOrderNo.substring(6)); // Extract the number part (e.g., "003" -> 3)
 
   console.log(`📦 Starting bulk processing with base order: ${baseOrderNo}`);
 
@@ -556,8 +558,8 @@ async function processOrdersInBatches(orderHeaders, orderProducts, userId, userR
     try {
       const orderProducts = productsByOrder.get(orderHeader.order_index) || [];
 
-      // Generate sequential order number for this batch
-      const currentOrderNo = `${yearPrefix}${String(startingCount + i).padStart(2, "0")}`;
+      // Generate sequential order number for this batch (3-digit format)
+      const currentOrderNo = `${yearPrefix}${String(startingCount + i).padStart(3, "0")}`;
       console.log(`📦 Assigned order number: ${currentOrderNo}`);
 
       // Calculate total pallets from products

@@ -72,20 +72,29 @@ async function createEntryOrder(entryData) {
       // ✅ Validate each product has required fields
       for (let i = 0; i < entryData.products.length; i++) {
         const productData = entryData.products[i];
-        
+
         if (!productData.product_code || !productData.product_id) {
           throw new Error(`Product ${i + 1}: Missing required fields product_code and product_id`);
         }
-        
+
         if (!productData.inventory_quantity || !productData.package_quantity || !productData.weight_kg) {
           throw new Error(`Product ${i + 1} (${productData.product_code}): Missing required quantity fields`);
         }
+      }
 
-        // ✅ Verify the product exists in the database
-        const existingProduct = await tx.product.findUnique({
-          where: { product_id: productData.product_id }
-        });
-        
+      // ✅ Batch fetch all products for validation
+      const productIds = entryData.products.map(p => p.product_id);
+      const existingProducts = await tx.product.findMany({
+        where: { product_id: { in: productIds } }
+      });
+
+      const productMap = new Map(existingProducts.map(p => [p.product_id, p]));
+
+      // ✅ Validate products exist and codes match
+      for (let i = 0; i < entryData.products.length; i++) {
+        const productData = entryData.products[i];
+        const existingProduct = productMap.get(productData.product_id);
+
         if (!existingProduct) {
           throw new Error(`Product ${i + 1}: Product with ID ${productData.product_id} not found`);
         }
@@ -143,6 +152,9 @@ async function createEntryOrder(entryData) {
     }
 
     return { entryOrder: newEntryOrder, products: entryOrderProducts };
+  }, {
+    maxWait: 30000, // Maximum time to wait for a transaction to be available (30 seconds)
+    timeout: 30000  // Maximum time a transaction can run (30 seconds)
   });
 }
 
@@ -684,24 +696,31 @@ async function getEntryFormFields(userRole = null, userId = null) {
 async function getCurrentEntryOrderNo() {
   const currentYear = new Date().getFullYear().toString(); // Full 4-digit year
   const yearPrefix = `OI${currentYear}`;
-  
-  const lastOrder = await prisma.entryOrder.findFirst({
+
+  // Get ALL orders for this year to find the highest number
+  const allOrders = await prisma.entryOrder.findMany({
     where: {
       entry_order_no: { startsWith: yearPrefix },
     },
-    orderBy: { registration_date: "desc" },
+    select: { entry_order_no: true }
   });
 
   let nextCount = 1;
-  if (lastOrder?.entry_order_no) {
-    // Extract count from format like "OI202501" -> "01"
-    const countPart = lastOrder.entry_order_no.substring(yearPrefix.length);
-    if (!isNaN(countPart)) {
-      nextCount = parseInt(countPart) + 1;
+  if (allOrders.length > 0) {
+    // Extract all count numbers and find the max
+    const counts = allOrders
+      .map(order => {
+        const countPart = order.entry_order_no.substring(yearPrefix.length);
+        return isNaN(countPart) ? 0 : parseInt(countPart);
+      })
+      .filter(count => count > 0);
+
+    if (counts.length > 0) {
+      nextCount = Math.max(...counts) + 1;
     }
   }
 
-  return `${yearPrefix}${String(nextCount).padStart(2, "0")}`;
+  return `${yearPrefix}${String(nextCount).padStart(3, "0")}`;
 }
 
 /**
