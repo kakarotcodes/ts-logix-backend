@@ -1190,14 +1190,18 @@ async function processBulkEntryOrders(req, res) {
       });
     }
 
-    console.log(`📤 BULK UPLOAD: Processing file ${req.file.originalname} (${req.file.size} bytes) for user ${actualUserId}`);
+    // Get client_id for CLIENT users (similar to normal entry order creation)
+    const clientId = userRole === 'CLIENT' ? req.user.client_id : null;
+
+    console.log(`📤 BULK UPLOAD: Processing file ${req.file.originalname} (${req.file.size} bytes) for user ${actualUserId}, client: ${clientId || 'N/A'}`);
 
     // Process the file
     const result = await bulkEntryService.processBulkEntryOrders(
       req.file.buffer,
       actualUserId,
       userRole,
-      validOrganisationId
+      validOrganisationId,
+      clientId  // Pass client_id to bulk service
     );
 
     // Log the bulk operation

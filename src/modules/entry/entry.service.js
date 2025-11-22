@@ -38,6 +38,7 @@ async function createEntryOrder(entryData) {
         document_date: toUTC(entryData.document_date),
         entry_date_time: toUTC(entryData.entry_date_time),
         created_by: entryData.created_by,
+        client_id: entryData.client_id || null,  // Add client_id for CLIENT users
 
         // Order details
         order_status: entryData.order_status || OrderStatusEntry.REVISION,

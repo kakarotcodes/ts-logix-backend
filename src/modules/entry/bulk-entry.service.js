@@ -8,9 +8,9 @@ const prisma = new PrismaClient();
  * Process bulk entry orders from Excel file
  * Following existing TSLogix patterns and validation
  */
-async function processBulkEntryOrders(fileBuffer, userId, userRole, organisationId) {
+async function processBulkEntryOrders(fileBuffer, userId, userRole, organisationId, clientId = null) {
   const startTime = Date.now();
-  console.log(`📊 BULK ENTRY: Starting bulk processing at ${new Date().toISOString()}`);
+  console.log(`📊 BULK ENTRY: Starting bulk processing at ${new Date().toISOString()} for user ${userId}, client: ${clientId || 'N/A'}`);
 
   try {
     // 1. Parse Excel file
@@ -41,7 +41,8 @@ async function processBulkEntryOrders(fileBuffer, userId, userRole, organisation
       orderProducts,
       userId,
       userRole,
-      organisationId
+      organisationId,
+      clientId
     );
 
     console.log(`✅ BULK ENTRY: Completed processing ${result.successful_orders.length} successful, ${result.failed_orders.length} failed`);
@@ -525,7 +526,7 @@ async function checkForSystemDuplicates(orderHeaders, userId, userRole) {
 /**
  * Process orders in optimized batches to prevent database overload
  */
-async function processOrdersInBatches(orderHeaders, orderProducts, userId, userRole, organisationId) {
+async function processOrdersInBatches(orderHeaders, orderProducts, userId, userRole, organisationId, clientId = null) {
   const BATCH_SIZE = 5; // Process 5 orders at a time for pharmaceutical complexity
   const successful_orders = [];
   const failed_orders = [];
@@ -584,6 +585,7 @@ async function processOrdersInBatches(orderHeaders, orderProducts, userId, userR
         warehouse_id: orderHeader.warehouse_id,
         organisation_id: organisationId,
         created_by: userId,
+        client_id: clientId,  // Add client_id for CLIENT users
         products: orderProducts.map(product => ({
           serial_number: product.serial_number,
           supplier_id: product.supplier_id,
