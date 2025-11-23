@@ -5,6 +5,39 @@ const { createEntryOrder, getCurrentEntryOrderNo } = require("./entry.service");
 const prisma = new PrismaClient();
 
 /**
+ * Convert Excel serial date number to JavaScript Date
+ * Excel stores dates as serial numbers (days since 1900-01-01)
+ * @param {number|string|Date} excelDate - Excel date value
+ * @returns {string|null} - ISO date string or null
+ */
+function convertExcelDate(excelDate) {
+  if (!excelDate) return null;
+
+  // If it's already a string (ISO format), return as-is
+  if (typeof excelDate === 'string') {
+    return excelDate;
+  }
+
+  // If it's a Date object, convert to ISO string
+  if (excelDate instanceof Date) {
+    return excelDate.toISOString();
+  }
+
+  // If it's a number, treat as Excel serial date
+  if (typeof excelDate === 'number') {
+    // Excel epoch: Dec 30, 1899 (accounting for Excel's 1900 leap year bug)
+    const excelEpoch = new Date(1899, 11, 30);
+    const milliseconds = excelDate * 24 * 60 * 60 * 1000;
+    const actualDate = new Date(excelEpoch.getTime() + milliseconds);
+
+    // Return ISO string (YYYY-MM-DD format for dates, full ISO for datetimes)
+    return actualDate.toISOString();
+  }
+
+  return null;
+}
+
+/**
  * Process bulk entry orders from Excel file
  * Following existing TSLogix patterns and validation
  */
@@ -233,12 +266,14 @@ async function validateEntryOrdersWithMapping(entryOrders, userId, userRole) {
       }
     }
 
-    // Date validation
+    // Date validation and conversion
     if (!row['Registration Date']) {
       rowErrors.push(`Row ${rowNumber}: Registration Date is required`);
     } else {
-      mappedRow.registration_date = row['Registration Date'];
-      if (!isValidDate(row['Registration Date'])) {
+      // Convert Excel serial date to ISO string
+      const convertedDate = convertExcelDate(row['Registration Date']);
+      mappedRow.registration_date = convertedDate;
+      if (!convertedDate || !isValidDate(convertedDate)) {
         rowErrors.push(`Row ${rowNumber}: Invalid Registration Date format. Use YYYY-MM-DD`);
       }
     }
@@ -246,8 +281,10 @@ async function validateEntryOrdersWithMapping(entryOrders, userId, userRole) {
     if (!row['Document Date']) {
       rowErrors.push(`Row ${rowNumber}: Document Date is required`);
     } else {
-      mappedRow.document_date = row['Document Date'];
-      if (!isValidDate(row['Document Date'])) {
+      // Convert Excel serial date to ISO string
+      const convertedDate = convertExcelDate(row['Document Date']);
+      mappedRow.document_date = convertedDate;
+      if (!convertedDate || !isValidDate(convertedDate)) {
         rowErrors.push(`Row ${rowNumber}: Invalid Document Date format. Use YYYY-MM-DD`);
       }
     }
@@ -255,8 +292,10 @@ async function validateEntryOrdersWithMapping(entryOrders, userId, userRole) {
     if (!row['Admission Date Time']) {
       rowErrors.push(`Row ${rowNumber}: Admission Date Time is required`);
     } else {
-      mappedRow.entry_date_time = row['Admission Date Time'];
-      if (!isValidDateTime(row['Admission Date Time'])) {
+      // Convert Excel serial date to ISO string
+      const convertedDateTime = convertExcelDate(row['Admission Date Time']);
+      mappedRow.entry_date_time = convertedDateTime;
+      if (!convertedDateTime || !isValidDateTime(convertedDateTime)) {
         rowErrors.push(`Row ${rowNumber}: Invalid Admission Date Time format. Use YYYY-MM-DD HH:MM:SS`);
       }
     }
@@ -440,14 +479,25 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
       }
     });
 
-    // Date validation
+    // Date validation and conversion
     if (row['Manufacturing Date'] && row['Expiration Date']) {
-      const mfgDate = new Date(row['Manufacturing Date']);
-      const expDate = new Date(row['Expiration Date']);
-      if (isNaN(mfgDate) || isNaN(expDate)) {
+      // Convert Excel serial dates to ISO strings
+      const convertedMfgDate = convertExcelDate(row['Manufacturing Date']);
+      const convertedExpDate = convertExcelDate(row['Expiration Date']);
+
+      mappedRow.manufacturing_date = convertedMfgDate;
+      mappedRow.expiration_date = convertedExpDate;
+
+      if (!convertedMfgDate || !convertedExpDate) {
         rowErrors.push(`Row ${rowNumber}: Invalid date format. Use YYYY-MM-DD`);
-      } else if (expDate <= mfgDate) {
-        rowErrors.push(`Row ${rowNumber}: Expiration Date must be after Manufacturing Date`);
+      } else {
+        const mfgDate = new Date(convertedMfgDate);
+        const expDate = new Date(convertedExpDate);
+        if (isNaN(mfgDate) || isNaN(expDate)) {
+          rowErrors.push(`Row ${rowNumber}: Invalid date format. Use YYYY-MM-DD`);
+        } else if (expDate <= mfgDate) {
+          rowErrors.push(`Row ${rowNumber}: Expiration Date must be after Manufacturing Date`);
+        }
       }
     }
 
