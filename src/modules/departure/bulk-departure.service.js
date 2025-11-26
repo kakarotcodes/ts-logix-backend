@@ -5,6 +5,39 @@ const { getCurrentDepartureOrderNo, createDepartureOrder } = require("./departur
 const prisma = new PrismaClient();
 
 /**
+ * Convert Excel serial date number to JavaScript Date
+ * Excel stores dates as serial numbers (days since 1900-01-01)
+ * @param {number|string|Date} excelDate - Excel date value
+ * @returns {string|null} - ISO date string or null
+ */
+function convertExcelDate(excelDate) {
+  if (!excelDate) return null;
+
+  // If it's already a string (ISO format), return as-is
+  if (typeof excelDate === 'string') {
+    return excelDate;
+  }
+
+  // If it's a Date object, convert to ISO string
+  if (excelDate instanceof Date) {
+    return excelDate.toISOString();
+  }
+
+  // If it's a number, treat as Excel serial date
+  if (typeof excelDate === 'number') {
+    // Excel epoch: Dec 30, 1899 (accounting for Excel's 1900 leap year bug)
+    const excelEpoch = new Date(1899, 11, 30);
+    const milliseconds = excelDate * 24 * 60 * 60 * 1000;
+    const actualDate = new Date(excelEpoch.getTime() + milliseconds);
+
+    // Return ISO string
+    return actualDate.toISOString();
+  }
+
+  return null;
+}
+
+/**
  * Process bulk departure orders from Excel file
  * @param {Buffer} fileBuffer - Excel file buffer
  * @param {string} userId - User ID creating the orders
@@ -65,7 +98,7 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
   const [clients, warehouses, documentTypes, products] = await Promise.all([
     prisma.client.findMany({ select: { client_id: true, company_name: true, first_names: true, last_name: true } }),
     prisma.warehouse.findMany({ select: { warehouse_id: true, name: true } }),
-    prisma.documentType.findMany({ select: { document_type_id: true, name: true, type: true } }),
+    prisma.departureDocumentType.findMany({ select: { document_type_id: true, name: true, type: true } }),  // ✅ Fixed: Use departureDocumentType
     prisma.product.findMany({ select: { product_id: true, product_code: true, name: true } })
   ]);
 
@@ -116,13 +149,13 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
       return;
     }
 
-    // Transform order data
+    // Transform order data with Excel date conversion
     const orderData = {
       order_index: parseInt(row['Order Index']),
       client_id: clientId,
       warehouse_id: warehouseId,
-      departure_date_time: new Date(row['Departure Date Time']),
-      document_date: new Date(row['Document Date']),
+      departure_date_time: convertExcelDate(row['Departure Date Time']),  // ✅ Convert Excel serial date
+      document_date: convertExcelDate(row['Document Date']),  // ✅ Convert Excel serial date
       dispatch_document_number: row['Dispatch Document Number'],
       personnel_in_charge: row['Personnel In Charge'],
       observation: row['Observation'] || '',
@@ -339,7 +372,7 @@ async function processOrdersInBatches(orderHeaders, orderProducts, orderDocument
 
       successful_orders.push({
         departure_order_no: currentOrderNo,
-        departure_order_id: result.departureOrder.departure_order_id,
+        departure_order_id: result.departure_order.departure_order_id, // ✅ Fixed: Use underscore notation
         products_count: orderProductList.length,
         documents_count: orderDocumentList.length
       });
@@ -375,7 +408,7 @@ async function generateBulkDepartureTemplate(userId, userRole) {
       prisma.warehouse.findMany({
         select: { warehouse_id: true, name: true }
       }),
-      prisma.documentType.findMany({
+      prisma.departureDocumentType.findMany({  // ✅ Fixed: Use departureDocumentType
         select: { document_type_id: true, name: true, type: true }
       }),
       prisma.product.findMany({

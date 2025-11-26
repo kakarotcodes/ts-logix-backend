@@ -1455,7 +1455,7 @@ async function createDepartureOrder(departureData) {
             requested_packages: parseInt(productData.requested_packages || productData.requested_quantity),
             requested_pallets: parseInt(productData.requested_pallets) || Math.ceil(productData.requested_quantity / 200),
             presentation: productData.presentation || "CAJA", // ✅ MANDATORY: Packaging type
-            requested_weight: parseFloat(productData.requested_weight),
+            requested_weight: productData.requested_weight ? parseFloat(productData.requested_weight) : 0, // ✅ Default to 0 if missing
             requested_volume: productData.requested_volume ? parseFloat(productData.requested_volume) : null,
             unit_price: productData.unit_price ? parseFloat(productData.unit_price) : null,
             total_value: productData.unit_price ? parseFloat(productData.unit_price) * parseInt(productData.requested_quantity) : null,
