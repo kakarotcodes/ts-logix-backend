@@ -623,7 +623,7 @@ async function reviewEntryOrder(req, res) {
     const reviewerId = req.user?.id;
     const userRole = req.user?.role;
 
-    if (!userRole || (userRole !== "ADMIN" && userRole !== "WAREHOUSE_INCHARGE" && userRole !== "PHARMACIST")) {
+    if (!userRole || (userRole !== "ADMIN" && userRole !== "WAREHOUSE_INCHARGE")) {
       // ✅ LOG: Access denied for review
       await req.logEvent(
         'ACCESS_DENIED',
@@ -631,15 +631,15 @@ async function reviewEntryOrder(req, res) {
         orderNo,
         `Access denied: ${userRole} user attempted to review entry order ${orderNo}`,
         null,
-        { 
-          attempted_role: userRole, 
+        {
+          attempted_role: userRole,
           required_roles: ['ADMIN', 'WAREHOUSE_INCHARGE'],
           order_no: orderNo
         },
         { operation_type: 'ACCESS_CONTROL', action_type: 'REVIEW_DENIED' }
       );
-      
-      return res.status(403).json({ 
+
+      return res.status(403).json({
         message: "Access denied. Only administrators and warehouse incharge can review orders."
       });
     }

@@ -27,15 +27,15 @@ const ROLES = {
   PHARMACIST: {
     level: 3,
     permissions: [
-      'entry_orders:read,approve,reject',
-      'departure_orders:read,approve,reject',
+      'entry_orders:read',
+      'departure_orders:read',
       'inventory:read,quality_control',
       'quality_control:*',
       'reports:read',
       'clients:read',
       'audit_logs:read'
     ],
-    description: 'Quality control, approve orders, inventory oversight'
+    description: 'Quality control and inventory oversight'
   },
   WAREHOUSE_ASSISTANT: {
     level: 2,
