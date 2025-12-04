@@ -757,6 +757,7 @@ async function getEntryOrderByNo(orderNo, organisationId = null, userRole = null
       cif_value: true,
       total_pallets: true,
       observation: true,
+      guide_number: true,
       uploaded_documents: true,
       review_status: true,
       review_comments: true,
