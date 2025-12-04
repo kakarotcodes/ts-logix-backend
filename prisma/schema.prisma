@@ -12,7 +12,7 @@ datasource db {
 enum RoleName {
   ADMIN                 // Full system access
   WAREHOUSE_INCHARGE    // Warehouse management, approve orders, assign cells
-  PHARMACIST           // Quality control, approve orders, inventory oversight
+  PHARMACIST           // Quality control and inventory oversight (read-only)
   WAREHOUSE_ASSISTANT  // Limited access to assigned clients only
   CLIENT               // Create/update own entry orders only
 }
@@ -1023,7 +1023,7 @@ model EntryOrderProduct {
   inventoryAllocations      InventoryAllocation[]
   inventoryLogs             InventoryLog[]
 
-  @@unique([entry_order_id, product_code], name: "entry_order_product_unique")
+  @@unique([entry_order_id, product_code, lot_series], name: "entry_order_product_unique")
   @@map("entry_order_products")
 }
 

@@ -480,23 +480,41 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
     });
 
     // Date validation and conversion
-    if (row['Manufacturing Date'] && row['Expiration Date']) {
-      // Convert Excel serial dates to ISO strings
+    if (row['Manufacturing Date']) {
       const convertedMfgDate = convertExcelDate(row['Manufacturing Date']);
-      const convertedExpDate = convertExcelDate(row['Expiration Date']);
-
       mappedRow.manufacturing_date = convertedMfgDate;
-      mappedRow.expiration_date = convertedExpDate;
 
-      if (!convertedMfgDate || !convertedExpDate) {
-        rowErrors.push(`Row ${rowNumber}: Invalid date format. Use YYYY-MM-DD`);
+      if (!convertedMfgDate) {
+        rowErrors.push(`Row ${rowNumber}: Invalid Manufacturing Date format. Use YYYY-MM-DD`);
+      }
+    }
+
+    // Handle Expiration Date - accept "S / F" (Sin Fecha / Without Date) as valid for no expiration
+    if (row['Expiration Date']) {
+      const expDateValue = row['Expiration Date'];
+
+      // Check if it's "S / F" or similar variations (case-insensitive, with or without spaces)
+      const noExpirationValues = ['S / F', 'S/F', 'SF', 'SIN FECHA', 'WITHOUT DATE', 'N/A'];
+      const normalizedExpDate = typeof expDateValue === 'string' ? expDateValue.trim().toUpperCase().replace(/\s+/g, ' ') : null;
+
+      if (normalizedExpDate && noExpirationValues.includes(normalizedExpDate)) {
+        // "S / F" means no expiration date - set to null
+        mappedRow.expiration_date = null;
       } else {
-        const mfgDate = new Date(convertedMfgDate);
-        const expDate = new Date(convertedExpDate);
-        if (isNaN(mfgDate) || isNaN(expDate)) {
-          rowErrors.push(`Row ${rowNumber}: Invalid date format. Use YYYY-MM-DD`);
-        } else if (expDate <= mfgDate) {
-          rowErrors.push(`Row ${rowNumber}: Expiration Date must be after Manufacturing Date`);
+        // Try to convert as a date
+        const convertedExpDate = convertExcelDate(expDateValue);
+        mappedRow.expiration_date = convertedExpDate;
+
+        if (!convertedExpDate) {
+          rowErrors.push(`Row ${rowNumber}: Invalid Expiration Date format. Use YYYY-MM-DD or "S / F" for no expiration`);
+        } else if (mappedRow.manufacturing_date) {
+          // Validate expiration is after manufacturing
+          const mfgDate = new Date(mappedRow.manufacturing_date);
+          const expDate = new Date(convertedExpDate);
+
+          if (!isNaN(mfgDate) && !isNaN(expDate) && expDate <= mfgDate) {
+            rowErrors.push(`Row ${rowNumber}: Expiration Date must be after Manufacturing Date`);
+          }
         }
       }
     }

@@ -62,12 +62,16 @@ async function createEntryOrder(entryData) {
     // 3. ✅ FIXED: Create products for this entry order with duplicate validation
     const entryOrderProducts = [];
     if (entryData.products && Array.isArray(entryData.products)) {
-      // ✅ Check for duplicate product codes
-      const productCodes = entryData.products.map(p => p.product_code);
-      const duplicateProductCodes = productCodes.filter((code, index) => productCodes.indexOf(code) !== index);
-      
-      if (duplicateProductCodes.length > 0) {
-        throw new Error(`Duplicate product codes found in entry order: ${[...new Set(duplicateProductCodes)].join(', ')}. Each product can only appear once per entry order.`);
+      // ✅ Check for duplicate product codes + lot series combinations (same product with same lot is not allowed)
+      const productKeys = entryData.products.map(p => `${p.product_code}|${p.lot_series || ''}`);
+      const duplicateProductKeys = productKeys.filter((key, index) => productKeys.indexOf(key) !== index);
+
+      if (duplicateProductKeys.length > 0) {
+        const duplicateInfo = [...new Set(duplicateProductKeys)].map(key => {
+          const [code, lot] = key.split('|');
+          return `${code} (Lot: ${lot || 'N/A'})`;
+        });
+        throw new Error(`Duplicate product code + lot series combinations found in entry order: ${duplicateInfo.join(', ')}. Same product with same lot number cannot appear twice.`);
       }
 
       // ✅ Validate each product has required fields
@@ -114,11 +118,11 @@ async function createEntryOrder(entryData) {
               entry_order_id: newEntryOrder.entry_order_id,
 
               // Product identification
-              serial_number: productData.serial_number,
+              serial_number: productData.serial_number ? String(productData.serial_number) : null,
               supplier_id: productData.supplier_id,
               product_code: productData.product_code,
               product_id: productData.product_id,
-              lot_series: productData.lot_series,
+              lot_series: productData.lot_series ? String(productData.lot_series) : null,
 
               // Dates
               manufacturing_date: toUTC(productData.manufacturing_date),
@@ -1252,12 +1256,16 @@ async function updateEntryOrder(orderNo, updateData, userId) {
 
     // 5. Handle product updates if provided
     if (updateData.products && Array.isArray(updateData.products)) {
-      // ✅ FIXED: Check for duplicate product codes ONLY within the incoming update data
-      const incomingProductCodes = updateData.products.map(p => p.product_code).filter(Boolean);
-      const duplicatesInIncoming = incomingProductCodes.filter((code, index) => incomingProductCodes.indexOf(code) !== index);
-      
+      // ✅ FIXED: Check for duplicate product codes + lot series ONLY within the incoming update data
+      const incomingProductKeys = updateData.products.map(p => `${p.product_code}|${p.lot_series || ''}`).filter(Boolean);
+      const duplicatesInIncoming = incomingProductKeys.filter((key, index) => incomingProductKeys.indexOf(key) !== index);
+
       if (duplicatesInIncoming.length > 0) {
-        throw new Error(`Duplicate product codes found in update request: ${[...new Set(duplicatesInIncoming)].join(', ')}. Each product can only appear once in the update.`);
+        const duplicateInfo = [...new Set(duplicatesInIncoming)].map(key => {
+          const [code, lot] = key.split('|');
+          return `${code} (Lot: ${lot || 'N/A'})`;
+        });
+        throw new Error(`Duplicate product code + lot series combinations found in update request: ${duplicateInfo.join(', ')}. Same product with same lot cannot appear twice.`);
       }
 
       // ✅ NEW: Also check for duplicates between new products and existing products (excluding products being updated)
@@ -1320,11 +1328,11 @@ async function updateEntryOrder(orderNo, updateData, userId) {
 
         // ✅ FIXED: Use direct field assignments for EntryOrderProduct
         const productUpdateData = {
-          serial_number: productData.serial_number,
+          serial_number: productData.serial_number ? String(productData.serial_number) : null,
           supplier_id: productData.supplier_id, // ✅ Direct field
           product_code: productData.product_code,
           product_id: productData.product_id, // ✅ Direct field
-          lot_series: productData.lot_series,
+          lot_series: productData.lot_series ? String(productData.lot_series) : null,
           manufacturing_date: productData.manufacturing_date
             ? toUTC(productData.manufacturing_date)
             : null,
