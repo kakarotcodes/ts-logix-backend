@@ -951,7 +951,8 @@ model EntryOrder {
   cif_value                   Decimal?            @db.Decimal(10, 2)
   total_pallets               Int?
   observation                 String?
-  
+  guide_number                String?
+
   // Document uploads
   uploaded_documents          Json?
   

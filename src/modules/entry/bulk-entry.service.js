@@ -639,6 +639,16 @@ async function processOrdersInBatches(orderHeaders, orderProducts, userId, userR
         return sum + (parseInt(product.quantity_pallets) || 0);
       }, 0);
 
+      // Calculate total weight from products (sum of all product weights)
+      const totalWeight = orderProducts.reduce((sum, product) => {
+        return sum + (parseFloat(product.weight_kg) || 0);
+      }, 0);
+
+      // Calculate total volume from products (sum of all product volumes)
+      const totalVolume = orderProducts.reduce((sum, product) => {
+        return sum + (parseFloat(product.volume_m3) || 0);
+      }, 0);
+
       // Transform data to match existing createEntryOrder service
       const entryData = {
         entry_order_no: currentOrderNo,
@@ -648,11 +658,12 @@ async function processOrdersInBatches(orderHeaders, orderProducts, userId, userR
         document_date: orderHeader.document_date,
         entry_date_time: orderHeader.entry_date_time,
         order_status: orderHeader.order_status || 'REVISION',
-        total_volume: orderHeader.total_volume,
-        total_weight: orderHeader.total_weight,
+        total_volume: totalVolume,
+        total_weight: totalWeight,
         cif_value: orderHeader.cif_value,
         total_pallets: totalPallets,
         observation: orderHeader.observation,
+        guide_number: orderHeader.guide_number,
         warehouse_id: orderHeader.warehouse_id,
         organisation_id: organisationId,
         created_by: userId,

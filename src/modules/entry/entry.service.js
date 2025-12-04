@@ -47,6 +47,7 @@ async function createEntryOrder(entryData) {
         cif_value: parseFloat(entryData.cif_value) || null,
         total_pallets: parseInt(entryData.total_pallets) || null,
         observation: entryData.observation,
+        guide_number: entryData.guide_number,
 
         // Document uploads
         uploaded_documents: entryData.uploaded_documents || null,
