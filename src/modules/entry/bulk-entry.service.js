@@ -537,17 +537,20 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
       }
     });
 
-    // Duplicate product detection within order
+    // Duplicate product detection within order (Product Code + Lot Series must be unique)
     if (mappedRow.order_index !== undefined && row['Product Code']) {
       if (!productsPerOrder.has(mappedRow.order_index)) {
         productsPerOrder.set(mappedRow.order_index, new Set());
       }
 
       const orderProducts = productsPerOrder.get(mappedRow.order_index);
-      if (orderProducts.has(row['Product Code'])) {
-        rowErrors.push(`Row ${rowNumber}: Duplicate Product Code '${row['Product Code']}' in order index ${mappedRow.order_index}`);
+      const lotSeries = row['Lot Series'] || '';
+      const productKey = `${row['Product Code']}|${lotSeries}`; // Unique key: Product Code + Lot Series
+
+      if (orderProducts.has(productKey)) {
+        rowErrors.push(`Row ${rowNumber}: Duplicate Product Code '${row['Product Code']}' with Lot Series '${lotSeries}' in order index ${mappedRow.order_index}`);
       } else {
-        orderProducts.add(row['Product Code']);
+        orderProducts.add(productKey);
       }
     }
 
