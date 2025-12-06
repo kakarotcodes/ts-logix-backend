@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "build": "npx prisma generate && npx prisma migrate deploy",
     "show-db": "npx prisma studio",
     "reset-db": "npx prisma migrate reset",
     "populate-countries": "node scripts/populate-countries.js"
