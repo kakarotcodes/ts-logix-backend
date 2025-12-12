@@ -3048,11 +3048,16 @@ async function getComprehensiveDepartureOrders(organisationId = null, userRole =
       ...searchConditions
     };
 
-    // ✅ OPTIMIZED: Use cursor-based pagination
+    // ✅ OPTIMIZED: Get total count first for proper pagination
+    const totalCount = await prisma.departureOrder.count({
+      where: finalWhereClause
+    });
+
+    // ✅ OPTIMIZED: Use cursor-based pagination with larger default page size
     const paginationResult = await getPaginatedDepartureOrders(
       finalWhereClause,
       filters.cursor,
-      filters.pageSize || 20
+      filters.pageSize || 50  // Increased default from 20 to 50 for better UX
     );
 
     if (!paginationResult.success) {
@@ -3302,12 +3307,13 @@ async function getComprehensiveDepartureOrders(organisationId = null, userRole =
       success: true,
       message: "Comprehensive departure orders retrieved successfully",
       data: comprehensiveOrders,
+      totalCount: totalCount, // ✅ ADDED: Return actual total count for proper pagination
       summary: {
         total_orders: comprehensiveOrders.length,
         status_breakdown: getStatusBreakdown(comprehensiveOrders),
         total_value: comprehensiveOrders.reduce((sum, o) => sum + o.comprehensive_summary.total_value, 0),
         total_products: comprehensiveOrders.reduce((sum, o) => sum + o.comprehensive_summary.total_products, 0),
-        average_allocation_percentage: comprehensiveOrders.length > 0 ? 
+        average_allocation_percentage: comprehensiveOrders.length > 0 ?
           (comprehensiveOrders.reduce((sum, o) => sum + o.comprehensive_summary.allocation_percentage, 0) / comprehensiveOrders.length).toFixed(1) : 0,
       },
       filters_applied: {

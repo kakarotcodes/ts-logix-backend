@@ -1481,13 +1481,17 @@ async function getComprehensiveDepartureOrders(req, res) {
       });
     }
 
-    // Build filters
+    // Build filters - pass pageSize to service so it fetches enough data
     const filters = {};
     if (status) filters.status = status;
     if (startDate) filters.startDate = startDate;
     if (endDate) filters.endDate = endDate;
     if (warehouseId) filters.warehouseId = warehouseId;
     if (clientId) filters.clientId = clientId;
+
+    // Calculate required pageSize - fetch enough records to cover requested page
+    // This ensures we have all data needed for the requested page
+    filters.pageSize = parseInt(page) * parseInt(limit);
 
     // Call service to get comprehensive departure orders
     const result = await departureService.getComprehensiveDepartureOrders(
@@ -1497,10 +1501,14 @@ async function getComprehensiveDepartureOrders(req, res) {
       filters
     );
 
-    // Apply pagination if needed
+    // Apply pagination
     const startIndex = (parseInt(page) - 1) * parseInt(limit);
     const endIndex = startIndex + parseInt(limit);
     const paginatedData = result.data.slice(startIndex, endIndex);
+
+    // ✅ FIXED: Use actual totalCount from service instead of result.data.length
+    const totalItems = result.totalCount || result.data.length;
+    const totalPages = Math.ceil(totalItems / parseInt(limit));
 
     // Success response
     res.status(200).json({
@@ -1512,9 +1520,9 @@ async function getComprehensiveDepartureOrders(req, res) {
       pagination: {
         current_page: parseInt(page),
         per_page: parseInt(limit),
-        total_items: result.data.length,
-        total_pages: Math.ceil(result.data.length / parseInt(limit)),
-        has_next_page: endIndex < result.data.length,
+        total_items: totalItems,
+        total_pages: totalPages,
+        has_next_page: parseInt(page) < totalPages,
         has_previous_page: parseInt(page) > 1,
       },
       metadata: {
