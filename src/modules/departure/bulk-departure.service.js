@@ -13,8 +13,17 @@ const prisma = new PrismaClient();
 function convertExcelDate(excelDate) {
   if (!excelDate) return null;
 
-  // If it's already a string (ISO format), return as-is
+  // If it's already a string (ISO format or date string), parse and return as UTC
   if (typeof excelDate === 'string') {
+    // Try to parse the string as a date
+    const parsed = new Date(excelDate);
+    if (!isNaN(parsed.getTime())) {
+      // If it's a date-only string (YYYY-MM-DD), treat as UTC midnight
+      if (/^\d{4}-\d{2}-\d{2}$/.test(excelDate.trim())) {
+        return excelDate.trim() + 'T00:00:00.000Z';
+      }
+      return parsed.toISOString();
+    }
     return excelDate;
   }
 
@@ -26,11 +35,12 @@ function convertExcelDate(excelDate) {
   // If it's a number, treat as Excel serial date
   if (typeof excelDate === 'number') {
     // Excel epoch: Dec 30, 1899 (accounting for Excel's 1900 leap year bug)
-    const excelEpoch = new Date(1899, 11, 30);
+    // Use Date.UTC to avoid local timezone issues
+    const excelEpochUTC = Date.UTC(1899, 11, 30, 0, 0, 0, 0);
     const milliseconds = excelDate * 24 * 60 * 60 * 1000;
-    const actualDate = new Date(excelEpoch.getTime() + milliseconds);
+    const actualDate = new Date(excelEpochUTC + milliseconds);
 
-    // Return ISO string
+    // Return ISO string in UTC
     return actualDate.toISOString();
   }
 
