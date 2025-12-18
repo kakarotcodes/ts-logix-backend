@@ -292,6 +292,7 @@ async function getAllDepartureOrders(searchQuery = "", organisationId = null, us
         dispatched_by: true,
         dispatched_at: true,
         dispatch_document_number: true, // ✅ NEW: Mandatory field
+        guide_number: true, // ✅ NEW: Guide number for departure order
         document_type_ids: true, // ✅ NEW: Multi-select document types
         uploaded_documents: true, // ✅ NEW: Document upload status
         customer: { select: { name: true } },

@@ -5,42 +5,98 @@ const { createEntryOrder, getCurrentEntryOrderNo } = require("./entry.service");
 const prisma = new PrismaClient();
 
 /**
- * Convert Excel serial date number to JavaScript Date
- * Excel stores dates as serial numbers (days since 1900-01-01)
+ * Convert Excel date to UTC ISO string
+ * Handles: Excel serial numbers, Date objects, and string dates
+ *
+ * IMPORTANT: This function preserves the DATE as shown in Excel regardless of timezone.
+ * If Excel shows "2025-01-15", the result will be "2025-01-15T00:00:00.000Z" (UTC midnight)
+ * This prevents timezone shifts when uploading from different countries (e.g., Peru UTC-5)
+ *
  * @param {number|string|Date} excelDate - Excel date value
- * @returns {string|null} - ISO date string or null
+ * @returns {string|null} - ISO date string in UTC or null
  */
 function convertExcelDate(excelDate) {
   if (!excelDate) return null;
 
-  // If it's already a string (ISO format or date string), parse and return as UTC
+  // If it's already a string (ISO format or date string)
   if (typeof excelDate === 'string') {
-    // Try to parse the string as a date
-    const parsed = new Date(excelDate);
-    if (!isNaN(parsed.getTime())) {
-      // If it's a date-only string (YYYY-MM-DD), treat as UTC midnight
-      if (/^\d{4}-\d{2}-\d{2}$/.test(excelDate.trim())) {
-        return excelDate.trim() + 'T00:00:00.000Z';
-      }
-      return parsed.toISOString();
+    const trimmed = excelDate.trim();
+
+    // If it's already an ISO string with timezone, return as-is
+    if (trimmed.includes('T') && (trimmed.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(trimmed))) {
+      return trimmed;
     }
-    return excelDate;
+
+    // If it's a date-only string (YYYY-MM-DD), treat as UTC midnight
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed + 'T00:00:00.000Z';
+    }
+
+    // If it's a datetime string (YYYY-MM-DD HH:MM:SS), treat as UTC
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+      const normalized = trimmed.replace(/\s+/, 'T');
+      return normalized.includes(':') && normalized.split(':').length === 2
+        ? normalized + ':00.000Z'
+        : normalized + '.000Z';
+    }
+
+    // Try to parse other string formats
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      // Extract date components and create UTC date to avoid timezone issues
+      const year = parsed.getFullYear();
+      const month = parsed.getMonth();
+      const day = parsed.getDate();
+      const hours = parsed.getHours();
+      const minutes = parsed.getMinutes();
+      const seconds = parsed.getSeconds();
+
+      return new Date(Date.UTC(year, month, day, hours, minutes, seconds)).toISOString();
+    }
+
+    return null;
   }
 
-  // If it's a Date object, convert to ISO string
+  // If it's a Date object (from XLSX with cellDates: true)
+  // IMPORTANT: Extract LOCAL date components and create UTC date
+  // This preserves the date as shown in Excel regardless of server timezone
   if (excelDate instanceof Date) {
-    return excelDate.toISOString();
+    if (isNaN(excelDate.getTime())) return null;
+
+    // Get the LOCAL date/time components (what the user sees in Excel)
+    const year = excelDate.getFullYear();
+    const month = excelDate.getMonth();
+    const day = excelDate.getDate();
+    const hours = excelDate.getHours();
+    const minutes = excelDate.getMinutes();
+    const seconds = excelDate.getSeconds();
+
+    // Create a UTC date with those same values
+    // This ensures "2025-01-15" in Excel becomes "2025-01-15T00:00:00.000Z" in UTC
+    return new Date(Date.UTC(year, month, day, hours, minutes, seconds)).toISOString();
   }
 
   // If it's a number, treat as Excel serial date
   if (typeof excelDate === 'number') {
+    // Excel serial date: days since 1900-01-01 (with 1900 leap year bug)
+    // For date-only values (integer), we want midnight UTC
+    // For datetime values (decimal), we include the time portion
+
+    const isDateOnly = Number.isInteger(excelDate);
+
     // Excel epoch: Dec 30, 1899 (accounting for Excel's 1900 leap year bug)
-    // Use Date.UTC to avoid local timezone issues
     const excelEpochUTC = Date.UTC(1899, 11, 30, 0, 0, 0, 0);
     const milliseconds = excelDate * 24 * 60 * 60 * 1000;
     const actualDate = new Date(excelEpochUTC + milliseconds);
 
-    // Return ISO string in UTC
+    if (isDateOnly) {
+      // For date-only values, return just the date at UTC midnight
+      const year = actualDate.getUTCFullYear();
+      const month = actualDate.getUTCMonth();
+      const day = actualDate.getUTCDate();
+      return new Date(Date.UTC(year, month, day, 0, 0, 0, 0)).toISOString();
+    }
+
     return actualDate.toISOString();
   }
 
@@ -56,8 +112,8 @@ async function processBulkEntryOrders(fileBuffer, userId, userRole, organisation
   console.log(`📊 BULK ENTRY: Starting bulk processing at ${new Date().toISOString()} for user ${userId}, client: ${clientId || 'N/A'}`);
 
   try {
-    // 1. Parse Excel file
-    const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+    // 1. Parse Excel file with cellDates to get proper Date objects
+    const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
     const validationResult = await validateExcelStructure(workbook, userId, userRole);
 
     if (!validationResult.isValid) {

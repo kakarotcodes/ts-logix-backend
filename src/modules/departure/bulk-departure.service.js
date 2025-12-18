@@ -5,42 +5,98 @@ const { getCurrentDepartureOrderNo } = require("./departure.service");
 const prisma = new PrismaClient();
 
 /**
- * Convert Excel serial date number to JavaScript Date
- * Excel stores dates as serial numbers (days since 1900-01-01)
+ * Convert Excel date to UTC ISO string
+ * Handles: Excel serial numbers, Date objects, and string dates
+ *
+ * IMPORTANT: This function preserves the DATE as shown in Excel regardless of timezone.
+ * If Excel shows "2025-01-15", the result will be "2025-01-15T00:00:00.000Z" (UTC midnight)
+ * This prevents timezone shifts when uploading from different countries (e.g., Peru UTC-5)
+ *
  * @param {number|string|Date} excelDate - Excel date value
- * @returns {string|null} - ISO date string or null
+ * @returns {string|null} - ISO date string in UTC or null
  */
 function convertExcelDate(excelDate) {
   if (!excelDate) return null;
 
-  // If it's already a string (ISO format or date string), parse and return as UTC
+  // If it's already a string (ISO format or date string)
   if (typeof excelDate === 'string') {
-    // Try to parse the string as a date
-    const parsed = new Date(excelDate);
-    if (!isNaN(parsed.getTime())) {
-      // If it's a date-only string (YYYY-MM-DD), treat as UTC midnight
-      if (/^\d{4}-\d{2}-\d{2}$/.test(excelDate.trim())) {
-        return excelDate.trim() + 'T00:00:00.000Z';
-      }
-      return parsed.toISOString();
+    const trimmed = excelDate.trim();
+
+    // If it's already an ISO string with timezone, return as-is
+    if (trimmed.includes('T') && (trimmed.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(trimmed))) {
+      return trimmed;
     }
-    return excelDate;
+
+    // If it's a date-only string (YYYY-MM-DD), treat as UTC midnight
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed + 'T00:00:00.000Z';
+    }
+
+    // If it's a datetime string (YYYY-MM-DD HH:MM:SS), treat as UTC
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+      const normalized = trimmed.replace(/\s+/, 'T');
+      return normalized.includes(':') && normalized.split(':').length === 2
+        ? normalized + ':00.000Z'
+        : normalized + '.000Z';
+    }
+
+    // Try to parse other string formats
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      // Extract date components and create UTC date to avoid timezone issues
+      const year = parsed.getFullYear();
+      const month = parsed.getMonth();
+      const day = parsed.getDate();
+      const hours = parsed.getHours();
+      const minutes = parsed.getMinutes();
+      const seconds = parsed.getSeconds();
+
+      return new Date(Date.UTC(year, month, day, hours, minutes, seconds)).toISOString();
+    }
+
+    return null;
   }
 
-  // If it's a Date object, convert to ISO string
+  // If it's a Date object (from XLSX with cellDates: true)
+  // IMPORTANT: Extract LOCAL date components and create UTC date
+  // This preserves the date as shown in Excel regardless of server timezone
   if (excelDate instanceof Date) {
-    return excelDate.toISOString();
+    if (isNaN(excelDate.getTime())) return null;
+
+    // Get the LOCAL date/time components (what the user sees in Excel)
+    const year = excelDate.getFullYear();
+    const month = excelDate.getMonth();
+    const day = excelDate.getDate();
+    const hours = excelDate.getHours();
+    const minutes = excelDate.getMinutes();
+    const seconds = excelDate.getSeconds();
+
+    // Create a UTC date with those same values
+    // This ensures "2025-01-15" in Excel becomes "2025-01-15T00:00:00.000Z" in UTC
+    return new Date(Date.UTC(year, month, day, hours, minutes, seconds)).toISOString();
   }
 
   // If it's a number, treat as Excel serial date
   if (typeof excelDate === 'number') {
+    // Excel serial date: days since 1900-01-01 (with 1900 leap year bug)
+    // For date-only values (integer), we want midnight UTC
+    // For datetime values (decimal), we include the time portion
+
+    const isDateOnly = Number.isInteger(excelDate);
+
     // Excel epoch: Dec 30, 1899 (accounting for Excel's 1900 leap year bug)
-    // Use Date.UTC to avoid local timezone issues
     const excelEpochUTC = Date.UTC(1899, 11, 30, 0, 0, 0, 0);
     const milliseconds = excelDate * 24 * 60 * 60 * 1000;
     const actualDate = new Date(excelEpochUTC + milliseconds);
 
-    // Return ISO string in UTC
+    if (isDateOnly) {
+      // For date-only values, return just the date at UTC midnight
+      const year = actualDate.getUTCFullYear();
+      const month = actualDate.getUTCMonth();
+      const day = actualDate.getUTCDate();
+      return new Date(Date.UTC(year, month, day, 0, 0, 0, 0)).toISOString();
+    }
+
     return actualDate.toISOString();
   }
 
@@ -59,8 +115,8 @@ async function processBulkDepartureOrders(fileBuffer, userId, userRole, organisa
   console.log(`📊 BULK DEPARTURE: Starting bulk processing at ${new Date().toISOString()}`);
 
   try {
-    // Parse Excel file
-    const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+    // Parse Excel file with cellDates to get proper Date objects
+    const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
 
     // Validate required sheets
     const requiredSheets = ['Departure_Orders', 'Products', 'Documents'];
@@ -167,6 +223,7 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
       departure_date_time: convertExcelDate(row['Departure Date Time']),  // ✅ Convert Excel serial date
       document_date: convertExcelDate(row['Document Date']),  // ✅ Convert Excel serial date
       dispatch_document_number: row['Dispatch Document Number'],
+      guide_number: row['Guide Number'] || '',  // ✅ NEW: Guide Number field
       personnel_in_charge: row['Personnel In Charge'],
       observation: row['Observation'] || '',
       row_number: rowNumber
@@ -221,6 +278,8 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
       requested_packages: parseInt(row['Requested Packages']),
       packaging_type: row['Packaging Type'] || 'NORMAL',
       packaging_status: row['Packaging Status'] || 'NORMAL',
+      guide_number: row['Guide Number'] || '',  // ✅ NEW: Guide Number field
+      lot_series: row['Lot Series'] || '',  // ✅ NEW: Lot Series field
       notes: row['Notes'] || '',
       row_number: rowNumber
     };
@@ -397,6 +456,7 @@ async function processOrdersInBatches(orderHeaders, orderProducts, orderDocument
               order_status: "PENDING",
               review_status: "PENDING",
               dispatch_document_number: orderHeader.dispatch_document_number,
+              guide_number: orderHeader.guide_number || null,  // ✅ NEW: Save guide number
               total_pallets: totalPallets,
               document_type_ids: documentTypeIds.length > 0 ? documentTypeIds : ['4cd70f81-eb64-4272-94ad-b6f644d80d22'],
               uploaded_documents: uploadedDocuments,
@@ -549,6 +609,7 @@ async function generateBulkDepartureTemplate(userId, userRole) {
         'Departure Date Time': '2025-01-25 14:30:00',
         'Document Date': '2025-01-25',
         'Dispatch Document Number': 'DISP-2025-001',
+        'Guide Number': 'GN-2025-001',  // ✅ NEW: Guide Number field
         'Personnel In Charge': 'Warehouse Incharge',
         'Observation': 'Sample departure order for bulk template'
       },
@@ -559,6 +620,7 @@ async function generateBulkDepartureTemplate(userId, userRole) {
         'Departure Date Time': '2025-01-26 10:00:00',
         'Document Date': '2025-01-26',
         'Dispatch Document Number': 'DISP-2025-002',
+        'Guide Number': 'GN-2025-002',  // ✅ NEW: Guide Number field
         'Personnel In Charge': 'Warehouse Incharge',
         'Observation': 'Second sample departure order'
       }
@@ -570,6 +632,8 @@ async function generateBulkDepartureTemplate(userId, userRole) {
         'Product Code': products[0]?.product_code || '23352',
         'Requested Quantity': 100,
         'Requested Packages': 10,
+        'Lot Series': 'LOT-2025-001',  // ✅ NEW: Lot Series field
+        'Guide Number': 'GN-P-001',  // ✅ NEW: Guide Number field for product
         'Packaging Type': 'NORMAL',
         'Packaging Status': 'NORMAL',
         'Notes': 'First product for departure'
@@ -579,6 +643,8 @@ async function generateBulkDepartureTemplate(userId, userRole) {
         'Product Code': products[1]?.product_code || '23356',
         'Requested Quantity': 50,
         'Requested Packages': 5,
+        'Lot Series': 'LOT-2025-002',  // ✅ NEW: Lot Series field
+        'Guide Number': 'GN-P-002',  // ✅ NEW: Guide Number field for product
         'Packaging Type': 'NORMAL',
         'Packaging Status': 'NORMAL',
         'Notes': 'Second product for departure'
@@ -628,6 +694,8 @@ async function generateBulkDepartureTemplate(userId, userRole) {
       { Step: 2, Instruction: 'Use Order Index (0, 1, 2...) to link orders with products and documents' },
       { Step: 3, Instruction: 'Fill the Products sheet with products to dispatch for each order' },
       { Step: 4, Instruction: 'Fill the Documents sheet with document references for each order' },
+      { Step: '4a', Instruction: 'Guide Number (optional) can be added at order level or product level' },
+      { Step: '4b', Instruction: 'Lot Series (optional) specifies the product batch/lot number' },
       { Step: 5, Instruction: 'Client Name must match exactly with names in Clients_Reference sheet' },
       { Step: 6, Instruction: 'Warehouse Name must match exactly with names in Warehouses_Reference sheet' },
       { Step: 7, Instruction: 'Product Code must match exactly with codes in Products_Reference sheet' },
