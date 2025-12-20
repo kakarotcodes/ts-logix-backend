@@ -456,7 +456,6 @@ async function processOrdersInBatches(orderHeaders, orderProducts, orderDocument
               order_status: "PENDING",
               review_status: "PENDING",
               dispatch_document_number: orderHeader.dispatch_document_number,
-              guide_number: orderHeader.guide_number || null,  // ✅ NEW: Save guide number
               total_pallets: totalPallets,
               document_type_ids: documentTypeIds.length > 0 ? documentTypeIds : ['4cd70f81-eb64-4272-94ad-b6f644d80d22'],
               uploaded_documents: uploadedDocuments,

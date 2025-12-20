@@ -1113,7 +1113,7 @@ model DepartureOrder {
   
   // ✅ NEW: Mandatory document fields
   dispatch_document_number    String?             // ✅ MANDATORY: Dispatch document number
-  
+
   // Document uploads
   uploaded_documents          Json?               // ✅ MANDATORY: Document upload
   
