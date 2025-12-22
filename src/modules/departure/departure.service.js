@@ -5382,6 +5382,7 @@ async function getApprovedDepartureOrdersForDispatch(warehouseId = null, userRol
             inventory_id: location.inventory_id,
             cell_reference: location.cell_reference,
             warehouse_name: location.warehouse_name,
+            lot_series: location.lot_series,
             quantity_to_dispatch: quantityToTake,
             weight_to_dispatch: (quantityToTake / location.available_quantity) * location.available_weight,
             removal_priority: location.removal_priority,

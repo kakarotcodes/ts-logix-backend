@@ -500,7 +500,7 @@ async function processOrdersInBatches(orderHeaders, orderProducts, orderDocument
               departure_order_id: departureOrder.departure_order_id,
               product_code: product.product_code,
               product_id: product.product_id,
-              lot_series: product.lot_series || `BULK-${Date.now()}`,
+              lot_series: product.lot_series || null,
               requested_quantity: product.requested_quantity,
               requested_packages: product.requested_packages,
               requested_pallets: Math.ceil(product.requested_quantity / 200),
