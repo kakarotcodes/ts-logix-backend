@@ -1813,9 +1813,378 @@ async function generateCardexReport(filters, userContext) {
   }
 }
 
+/**
+ * Generate Master Status Report - Current inventory snapshot
+ * Shows what's currently stored in the warehouse by position
+ * @param {Object} filters - Filter parameters
+ * @param {Object} userContext - User context for role-based filtering
+ * @returns {Object} Master status report data
+ */
+async function generateMasterStatusReport(filters = {}, userContext = {}) {
+  const startTime = Date.now();
+  console.log(`📊 MASTER STATUS REPORT: Starting report generation at ${new Date().toISOString()}`);
+
+  try {
+    const { userId, userRole } = userContext;
+    const reportDate = new Date().toISOString().split('T')[0];
+
+    // Build where clause for inventory allocations
+    const whereClause = {
+      status: "ACTIVE",
+      inventory: {
+        some: {
+          current_quantity: { gt: 0 }
+        }
+      }
+    };
+
+    // Date range filtering (by entry date)
+    if (filters.date_from || filters.date_to) {
+      whereClause.entry_order_product = {
+        entry_order: {}
+      };
+
+      if (filters.date_from) {
+        whereClause.entry_order_product.entry_order.entry_date_time = {
+          gte: new Date(filters.date_from)
+        };
+      }
+
+      if (filters.date_to) {
+        whereClause.entry_order_product.entry_order.entry_date_time = {
+          ...whereClause.entry_order_product.entry_order.entry_date_time,
+          lte: new Date(filters.date_to)
+        };
+      }
+    }
+
+    // Product filtering
+    if (filters.product_name || filters.product_code) {
+      whereClause.entry_order_product = {
+        ...whereClause.entry_order_product,
+        product: {}
+      };
+
+      if (filters.product_name) {
+        whereClause.entry_order_product.product.name = {
+          contains: filters.product_name,
+          mode: 'insensitive'
+        };
+      }
+
+      if (filters.product_code) {
+        whereClause.entry_order_product.product.product_code = {
+          contains: filters.product_code,
+          mode: 'insensitive'
+        };
+      }
+    }
+
+    // Quality status filtering
+    if (filters.quality_status) {
+      whereClause.quality_status = filters.quality_status;
+    }
+
+    // Warehouse filtering
+    if (filters.warehouse_id) {
+      whereClause.cell = {
+        warehouse_id: filters.warehouse_id
+      };
+    }
+
+    // Customer filtering
+    if (filters.customer_name || filters.customer_code) {
+      whereClause.entry_order_product = {
+        ...whereClause.entry_order_product,
+        entry_order: {
+          ...whereClause.entry_order_product?.entry_order,
+          clients: {}
+        }
+      };
+
+      if (filters.customer_name) {
+        whereClause.entry_order_product.entry_order.clients = {
+          OR: [
+            { company_name: { contains: filters.customer_name, mode: 'insensitive' } },
+            { first_names: { contains: filters.customer_name, mode: 'insensitive' } },
+            { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+          ]
+        };
+      }
+
+      if (filters.customer_code) {
+        whereClause.entry_order_product.entry_order.clients = {
+          ...whereClause.entry_order_product.entry_order.clients,
+          client_code: { contains: filters.customer_code, mode: 'insensitive' }
+        };
+      }
+    }
+
+    // Role-based access control
+    const isClientUser = userRole && !['ADMIN', 'WAREHOUSE_INCHARGE', 'PHARMACIST'].includes(userRole);
+
+    if (isClientUser && userId) {
+      try {
+        const userWithClients = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            clientUserAccounts: {
+              where: { is_active: true },
+              select: { client_id: true }
+            }
+          }
+        });
+
+        if (userWithClients?.clientUserAccounts?.length > 0) {
+          const userClientIds = userWithClients.clientUserAccounts.map(acc => acc.client_id);
+
+          whereClause.cell = {
+            ...whereClause.cell,
+            clientCellAssignments: {
+              some: {
+                is_active: true,
+                client_id: { in: userClientIds }
+              }
+            }
+          };
+        } else {
+          return {
+            success: true,
+            message: "No client assignments found for user",
+            data: [],
+            summary: {
+              total_records: 0,
+              total_warehouse_quantity: 0,
+              total_unit_quantity: 0,
+              unique_customers: 0,
+              unique_products: 0,
+              position_type_breakdown: {
+                normal: 0,
+                rejected: 0,
+                sample: 0,
+                returns: 0,
+                quarantine: 0
+              }
+            },
+            filters_applied: filters,
+            user_role: userRole,
+            is_client_filtered: true,
+            report_generated_at: new Date().toISOString(),
+            processing_time_ms: Date.now() - startTime
+          };
+        }
+      } catch (error) {
+        console.error("Error fetching user client assignments:", error);
+        return {
+          success: false,
+          message: "Error fetching user client assignments",
+          error: error.message
+        };
+      }
+    }
+
+    // Fetch inventory data
+    const inventoryData = await prisma.inventoryAllocation.findMany({
+      where: whereClause,
+      include: {
+        inventory: {
+          where: {
+            current_quantity: { gt: 0 }
+          },
+          select: {
+            inventory_id: true,
+            current_quantity: true,
+            current_package_quantity: true,
+            quality_status: true
+          }
+        },
+        entry_order_product: {
+          select: {
+            product_id: true,
+            entry_order: {
+              select: {
+                entry_order_id: true,
+                entry_order_no: true,
+                observation: true,
+                client: {
+                  select: {
+                    client_id: true,
+                    client_code: true,
+                    client_type: true,
+                    company_name: true,
+                    first_names: true,
+                    last_name: true
+                  }
+                }
+              }
+            },
+            product: {
+              select: {
+                product_id: true,
+                product_code: true,
+                name: true
+              }
+            }
+          }
+        },
+        cell: {
+          select: {
+            id: true,
+            row: true,
+            bay: true,
+            position: true,
+            cell_role: true,
+            warehouse: {
+              select: {
+                warehouse_id: true,
+                name: true
+              }
+            },
+            clientCellAssignments: {
+              where: { is_active: true },
+              select: {
+                client: {
+                  select: {
+                    client_id: true,
+                    client_code: true,
+                    company_name: true,
+                    first_names: true,
+                    last_name: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: [
+        { cell: { warehouse: { name: "asc" } } },
+        { cell: { row: "asc" } },
+        { cell: { bay: "asc" } },
+        { cell: { position: "asc" } }
+      ]
+    });
+
+    console.log(`📦 Retrieved ${inventoryData.length} inventory allocations for master status report`);
+
+    // Position type mapping
+    const mapPositionType = (qualityStatus) => {
+      const mapping = {
+        'CUARENTENA': 'Quarantine',
+        'APROBADO': 'Normal',
+        'DEVOLUCIONES': 'Returns',
+        'CONTRAMUESTRAS': 'Sample',
+        'RECHAZADOS': 'Rejected'
+      };
+      return mapping[qualityStatus] || qualityStatus || 'Unknown';
+    };
+
+    // Transform data into flat report format
+    const reportData = [];
+    const uniqueCustomers = new Set();
+    const uniqueProducts = new Set();
+    const positionTypeCount = {
+      normal: 0,
+      rejected: 0,
+      sample: 0,
+      returns: 0,
+      quarantine: 0
+    };
+
+    inventoryData.forEach(allocation => {
+      const inventory = allocation.inventory[0];
+      if (!inventory) return;
+
+      const product = allocation.entry_order_product?.product;
+      const entryOrder = allocation.entry_order_product?.entry_order;
+      const cell = allocation.cell;
+
+      // Get customer info from entry order client or cell assignment
+      let customerCode = '';
+      let customerName = '';
+
+      if (entryOrder?.client) {
+        customerCode = entryOrder.client.client_code || '';
+        customerName = entryOrder.client.company_name ||
+          `${entryOrder.client.first_names || ''} ${entryOrder.client.last_name || ''}`.trim();
+      } else if (cell?.clientCellAssignments?.[0]?.client) {
+        const client = cell.clientCellAssignments[0].client;
+        customerCode = client.client_code || '';
+        customerName = client.company_name ||
+          `${client.first_names || ''} ${client.last_name || ''}`.trim();
+      }
+
+      // Build position string
+      const positionPallet = `${cell.row}.${String(cell.bay).padStart(2, '0')}.${String(cell.position).padStart(2, '0')}`;
+
+      // Map position type
+      const positionType = mapPositionType(allocation.quality_status);
+
+      // Count position types
+      const statusLower = (allocation.quality_status || '').toLowerCase();
+      if (statusLower === 'aprobado') positionTypeCount.normal++;
+      else if (statusLower === 'rechazados') positionTypeCount.rejected++;
+      else if (statusLower === 'contramuestras') positionTypeCount.sample++;
+      else if (statusLower === 'devoluciones') positionTypeCount.returns++;
+      else if (statusLower === 'cuarentena') positionTypeCount.quarantine++;
+
+      // Track unique values
+      if (customerCode) uniqueCustomers.add(customerCode);
+      if (product?.product_code) uniqueProducts.add(product.product_code);
+
+      reportData.push({
+        date: reportDate,
+        customer_code: customerCode,
+        customer_name: customerName,
+        position_pallet_number: positionPallet,
+        position_type: positionType,
+        product_code: product?.product_code || '',
+        product_name: product?.name || '',
+        warehouse_quantity: inventory.current_quantity || 0,
+        unit_quantity: inventory.current_package_quantity || 0,
+        remarks: entryOrder?.observation || '',
+        observations: allocation.observations || ''
+      });
+    });
+
+    // Calculate summary
+    const summary = {
+      total_records: reportData.length,
+      total_warehouse_quantity: reportData.reduce((sum, item) => sum + item.warehouse_quantity, 0),
+      total_unit_quantity: reportData.reduce((sum, item) => sum + item.unit_quantity, 0),
+      unique_customers: uniqueCustomers.size,
+      unique_products: uniqueProducts.size,
+      position_type_breakdown: positionTypeCount
+    };
+
+    const processingTime = Date.now() - startTime;
+
+    return {
+      success: true,
+      message: "Master status report generated successfully",
+      data: reportData,
+      summary,
+      filters_applied: filters,
+      user_role: userRole,
+      is_client_filtered: isClientUser,
+      report_generated_at: new Date().toISOString(),
+      processing_time_ms: processingTime
+    };
+
+  } catch (error) {
+    console.error("Error generating master status report:", error);
+    return {
+      success: false,
+      message: "Error generating master status report",
+      error: error.message
+    };
+  }
+}
+
 module.exports = {
   generateWarehouseReport,
   generateProductCategoryReport,
   generateProductWiseReport,
   generateCardexReport,
+  generateMasterStatusReport,
 };

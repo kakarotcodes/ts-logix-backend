@@ -6,6 +6,7 @@ const {
   getProductWiseReport,
   getCardexReport,
   getMasterReport,
+  getMasterStatusReport,
 } = require("./reports.controller");
 
 // Warehouse report endpoint
@@ -22,5 +23,8 @@ router.get("/cardex", getCardexReport);
 
 // Master report endpoint - comprehensive transaction-based report
 router.get("/master", getMasterReport);
+
+// Master status report endpoint - current inventory snapshot by position
+router.get("/master-status", getMasterStatusReport);
 
 module.exports = router;
