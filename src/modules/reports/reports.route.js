@@ -7,6 +7,7 @@ const {
   getCardexReport,
   getMasterReport,
   getMasterStatusReport,
+  getMasterOccupancyReport,
 } = require("./reports.controller");
 
 // Warehouse report endpoint
@@ -26,5 +27,8 @@ router.get("/master", getMasterReport);
 
 // Master status report endpoint - current inventory snapshot by position
 router.get("/master-status", getMasterStatusReport);
+
+// Master occupancy report endpoint - warehouse capacity and occupancy status
+router.get("/master-occupancy", getMasterOccupancyReport);
 
 module.exports = router;

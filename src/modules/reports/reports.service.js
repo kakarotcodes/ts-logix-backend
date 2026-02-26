@@ -2181,10 +2181,164 @@ async function generateMasterStatusReport(filters = {}, userContext = {}) {
   }
 }
 
+/**
+ * Generate Master Occupancy Report - Warehouse capacity and occupancy status
+ * Shows positions by type (Normal, Samples, Rejected) and their occupancy
+ * @param {Object} filters - Filter parameters
+ * @param {Object} userContext - User context for role-based filtering
+ * @returns {Object} Master occupancy report data
+ */
+async function generateMasterOccupancyReport(filters = {}, userContext = {}) {
+  const startTime = Date.now();
+  console.log(`📊 MASTER OCCUPANCY REPORT: Starting report generation at ${new Date().toISOString()}`);
+
+  try {
+    const { userRole } = userContext;
+    const reportDate = new Date().toISOString().split('T')[0];
+
+    // Build where clause for warehouse cells
+    const whereClause = {
+      is_passage: false, // Exclude passage cells
+    };
+
+    // Warehouse filtering
+    if (filters.warehouse_id) {
+      whereClause.warehouse_id = filters.warehouse_id;
+    }
+
+    // Fetch all warehouses with their cells
+    const warehouses = await prisma.warehouse.findMany({
+      where: filters.warehouse_id ? { warehouse_id: filters.warehouse_id } : {},
+      include: {
+        cells: {
+          where: whereClause,
+          select: {
+            id: true,
+            cell_role: true,
+            status: true,
+            row: true,
+            bay: true,
+            position: true,
+          }
+        }
+      },
+      orderBy: { name: 'asc' }
+    });
+
+    console.log(`📦 Retrieved ${warehouses.length} warehouses for master occupancy report`);
+
+    // Map cell_role to report categories
+    const mapCellRoleToCategory = (cellRole) => {
+      switch (cellRole) {
+        case 'STANDARD':
+          return 'normal';
+        case 'SAMPLES':
+          return 'samples';
+        case 'REJECTED':
+        case 'DAMAGED':
+        case 'EXPIRED':
+        case 'RETURNS':
+          return 'rejected';
+        default:
+          return 'normal';
+      }
+    };
+
+    // Transform data into report format
+    const reportData = warehouses.map(warehouse => {
+      const cells = warehouse.cells || [];
+
+      // Count totals by category
+      const totalNormal = cells.filter(c => mapCellRoleToCategory(c.cell_role) === 'normal').length;
+      const totalSamples = cells.filter(c => mapCellRoleToCategory(c.cell_role) === 'samples').length;
+      const totalRejected = cells.filter(c => mapCellRoleToCategory(c.cell_role) === 'rejected').length;
+      const totalPositions = cells.length;
+
+      // Count occupied by category
+      const occupiedNormal = cells.filter(c => mapCellRoleToCategory(c.cell_role) === 'normal' && c.status === 'OCCUPIED').length;
+      const occupiedSamples = cells.filter(c => mapCellRoleToCategory(c.cell_role) === 'samples' && c.status === 'OCCUPIED').length;
+      const occupiedRejected = cells.filter(c => mapCellRoleToCategory(c.cell_role) === 'rejected' && c.status === 'OCCUPIED').length;
+      const totalOccupied = cells.filter(c => c.status === 'OCCUPIED').length;
+
+      // Calculate available (Total - Occupied)
+      const availableNormal = totalNormal - occupiedNormal;
+      const availableSamples = totalSamples - occupiedSamples;
+      const availableRejected = totalRejected - occupiedRejected;
+      const totalAvailable = totalPositions - totalOccupied;
+
+      return {
+        warehouse: warehouse.name,
+        warehouse_id: warehouse.warehouse_id,
+        date: reportDate,
+        total_positions: totalPositions,
+        total_normal_positions: totalNormal,
+        total_samples_positions: totalSamples,
+        total_rejected_positions: totalRejected,
+        total_occupied_positions: totalOccupied,
+        occupied_normal_positions: occupiedNormal,
+        occupied_samples_positions: occupiedSamples,
+        occupied_rejected_positions: occupiedRejected,
+        total_available_positions: totalAvailable,
+        available_normal_positions: availableNormal,
+        available_samples_positions: availableSamples,
+        available_rejected_positions: availableRejected,
+        occupancy_rate: totalPositions > 0 ? ((totalOccupied / totalPositions) * 100).toFixed(2) : '0.00',
+        remarks: '',
+        observations: ''
+      };
+    });
+
+    // Calculate summary across all warehouses
+    const summary = {
+      total_warehouses: reportData.length,
+      grand_total_positions: reportData.reduce((sum, w) => sum + w.total_positions, 0),
+      grand_total_normal: reportData.reduce((sum, w) => sum + w.total_normal_positions, 0),
+      grand_total_samples: reportData.reduce((sum, w) => sum + w.total_samples_positions, 0),
+      grand_total_rejected: reportData.reduce((sum, w) => sum + w.total_rejected_positions, 0),
+      grand_total_occupied: reportData.reduce((sum, w) => sum + w.total_occupied_positions, 0),
+      grand_occupied_normal: reportData.reduce((sum, w) => sum + w.occupied_normal_positions, 0),
+      grand_occupied_samples: reportData.reduce((sum, w) => sum + w.occupied_samples_positions, 0),
+      grand_occupied_rejected: reportData.reduce((sum, w) => sum + w.occupied_rejected_positions, 0),
+      grand_total_available: reportData.reduce((sum, w) => sum + w.total_available_positions, 0),
+      grand_available_normal: reportData.reduce((sum, w) => sum + w.available_normal_positions, 0),
+      grand_available_samples: reportData.reduce((sum, w) => sum + w.available_samples_positions, 0),
+      grand_available_rejected: reportData.reduce((sum, w) => sum + w.available_rejected_positions, 0),
+      overall_occupancy_rate: '0.00'
+    };
+
+    // Calculate overall occupancy rate
+    if (summary.grand_total_positions > 0) {
+      summary.overall_occupancy_rate = ((summary.grand_total_occupied / summary.grand_total_positions) * 100).toFixed(2);
+    }
+
+    const processingTime = Date.now() - startTime;
+
+    return {
+      success: true,
+      message: "Master occupancy report generated successfully",
+      data: reportData,
+      summary,
+      filters_applied: filters,
+      user_role: userRole,
+      report_generated_at: new Date().toISOString(),
+      processing_time_ms: processingTime
+    };
+
+  } catch (error) {
+    console.error("Error generating master occupancy report:", error);
+    return {
+      success: false,
+      message: "Error generating master occupancy report",
+      error: error.message
+    };
+  }
+}
+
 module.exports = {
   generateWarehouseReport,
   generateProductCategoryReport,
   generateProductWiseReport,
   generateCardexReport,
   generateMasterStatusReport,
+  generateMasterOccupancyReport,
 };

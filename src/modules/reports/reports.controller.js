@@ -4,6 +4,7 @@ const {
   generateProductWiseReport,
   generateCardexReport,
   generateMasterStatusReport,
+  generateMasterOccupancyReport,
 } = require("./reports.service");
 
 const { generateMasterReport } = require("./masterReport.service");
@@ -341,6 +342,54 @@ async function getMasterStatusReport(req, res) {
   }
 }
 
+async function getMasterOccupancyReport(req, res) {
+  try {
+    // Extract filter parameters from query string
+    const filters = {
+      warehouse_id: req.query.warehouse_id || null,
+    };
+
+    // Get user context from JWT token
+    const userContext = {
+      userId: req.user?.id,
+      userRole: req.user?.role
+    };
+
+    console.log(`📊 MASTER OCCUPANCY REPORT REQUEST: User ${userContext.userId} (${userContext.userRole}) requesting report with filters:`, filters);
+
+    // Generate the master occupancy report
+    const reportResult = await generateMasterOccupancyReport(filters, userContext);
+
+    if (!reportResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: reportResult.message,
+        error: reportResult.error
+      });
+    }
+
+    // Return successful response
+    return res.status(200).json({
+      success: true,
+      message: reportResult.message,
+      data: reportResult.data,
+      summary: reportResult.summary,
+      filters_applied: reportResult.filters_applied,
+      user_role: reportResult.user_role,
+      report_generated_at: reportResult.report_generated_at,
+      processing_time_ms: reportResult.processing_time_ms
+    });
+
+  } catch (error) {
+    console.error("Error in getMasterOccupancyReport controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error generating master occupancy report",
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   getWarehouseReport,
   getProductCategoryReport,
@@ -348,4 +397,5 @@ module.exports = {
   getCardexReport,
   getMasterReport,
   getMasterStatusReport,
+  getMasterOccupancyReport,
 };
