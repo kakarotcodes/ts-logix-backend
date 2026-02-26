@@ -5,6 +5,8 @@ const {
   generateCardexReport,
   generateMasterStatusReport,
   generateMasterOccupancyReport,
+  generateStockInReport,
+  generateStockOutReport,
 } = require("./reports.service");
 
 const { generateMasterReport } = require("./masterReport.service");
@@ -390,6 +392,110 @@ async function getMasterOccupancyReport(req, res) {
   }
 }
 
+async function getStockInReport(req, res) {
+  try {
+    // Extract filter parameters from query string
+    const filters = {
+      date_from: req.query.date_from || null,
+      date_to: req.query.date_to || null,
+      customer_name: req.query.customer_name || null,
+      customer_code: req.query.customer_code || null,
+    };
+
+    // Get user context from JWT token
+    const userContext = {
+      userId: req.user?.id,
+      userRole: req.user?.role
+    };
+
+    console.log(`📊 STOCK IN REPORT REQUEST: User ${userContext.userId} (${userContext.userRole}) requesting report with filters:`, filters);
+
+    // Generate the stock in report
+    const reportResult = await generateStockInReport(filters, userContext);
+
+    if (!reportResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: reportResult.message,
+        error: reportResult.error
+      });
+    }
+
+    // Return successful response
+    return res.status(200).json({
+      success: true,
+      message: reportResult.message,
+      data: reportResult.data,
+      summary: reportResult.summary,
+      filters_applied: reportResult.filters_applied,
+      user_role: reportResult.user_role,
+      is_client_filtered: reportResult.is_client_filtered,
+      report_generated_at: reportResult.report_generated_at,
+      processing_time_ms: reportResult.processing_time_ms
+    });
+
+  } catch (error) {
+    console.error("Error in getStockInReport controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error generating stock in report",
+      error: error.message
+    });
+  }
+}
+
+async function getStockOutReport(req, res) {
+  try {
+    // Extract filter parameters from query string
+    const filters = {
+      date_from: req.query.date_from || null,
+      date_to: req.query.date_to || null,
+      customer_name: req.query.customer_name || null,
+      customer_code: req.query.customer_code || null,
+    };
+
+    // Get user context from JWT token
+    const userContext = {
+      userId: req.user?.id,
+      userRole: req.user?.role
+    };
+
+    console.log(`📊 STOCK OUT REPORT REQUEST: User ${userContext.userId} (${userContext.userRole}) requesting report with filters:`, filters);
+
+    // Generate the stock out report
+    const reportResult = await generateStockOutReport(filters, userContext);
+
+    if (!reportResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: reportResult.message,
+        error: reportResult.error
+      });
+    }
+
+    // Return successful response
+    return res.status(200).json({
+      success: true,
+      message: reportResult.message,
+      data: reportResult.data,
+      summary: reportResult.summary,
+      filters_applied: reportResult.filters_applied,
+      user_role: reportResult.user_role,
+      is_client_filtered: reportResult.is_client_filtered,
+      report_generated_at: reportResult.report_generated_at,
+      processing_time_ms: reportResult.processing_time_ms
+    });
+
+  } catch (error) {
+    console.error("Error in getStockOutReport controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error generating stock out report",
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   getWarehouseReport,
   getProductCategoryReport,
@@ -398,4 +504,6 @@ module.exports = {
   getMasterReport,
   getMasterStatusReport,
   getMasterOccupancyReport,
+  getStockInReport,
+  getStockOutReport,
 };

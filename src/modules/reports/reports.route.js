@@ -8,6 +8,8 @@ const {
   getMasterReport,
   getMasterStatusReport,
   getMasterOccupancyReport,
+  getStockInReport,
+  getStockOutReport,
 } = require("./reports.controller");
 
 // Warehouse report endpoint
@@ -30,5 +32,11 @@ router.get("/master-status", getMasterStatusReport);
 
 // Master occupancy report endpoint - warehouse capacity and occupancy status
 router.get("/master-occupancy", getMasterOccupancyReport);
+
+// Stock in report endpoint - monthly summary of all entry orders
+router.get("/stock-in", getStockInReport);
+
+// Stock out report endpoint - monthly summary of all dispatch orders
+router.get("/stock-out", getStockOutReport);
 
 module.exports = router;

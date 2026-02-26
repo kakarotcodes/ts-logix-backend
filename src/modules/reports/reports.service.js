@@ -2334,6 +2334,484 @@ async function generateMasterOccupancyReport(filters = {}, userContext = {}) {
   }
 }
 
+/**
+ * Generate Stock In Report - Monthly summary of all entry orders
+ * Shows all stock in orders for a specified period
+ * @param {Object} filters - Filter parameters
+ * @param {Object} userContext - User context for role-based filtering
+ * @returns {Object} Stock in report data
+ */
+async function generateStockInReport(filters = {}, userContext = {}) {
+  const startTime = Date.now();
+  console.log(`📊 STOCK IN REPORT: Starting report generation at ${new Date().toISOString()}`);
+
+  try {
+    const { userId, userRole } = userContext;
+
+    // Build where clause for entry orders
+    const whereClause = {};
+
+    // Date range filtering (by registration date for period)
+    if (filters.date_from || filters.date_to) {
+      whereClause.registration_date = {};
+
+      if (filters.date_from) {
+        whereClause.registration_date.gte = new Date(filters.date_from);
+      }
+
+      if (filters.date_to) {
+        whereClause.registration_date.lte = new Date(filters.date_to);
+      }
+    }
+
+    // Customer filtering
+    if (filters.customer_name || filters.customer_code) {
+      whereClause.client = {};
+
+      if (filters.customer_name) {
+        whereClause.client.OR = [
+          { company_name: { contains: filters.customer_name, mode: 'insensitive' } },
+          { first_names: { contains: filters.customer_name, mode: 'insensitive' } },
+          { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+        ];
+      }
+
+      if (filters.customer_code) {
+        whereClause.client.client_code = { contains: filters.customer_code, mode: 'insensitive' };
+      }
+    }
+
+    // Role-based access control
+    const isClientUser = userRole && !['ADMIN', 'WAREHOUSE_INCHARGE', 'PHARMACIST'].includes(userRole);
+
+    if (isClientUser && userId) {
+      try {
+        const userWithClients = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            clientUserAccounts: {
+              where: { is_active: true },
+              select: { client_id: true }
+            }
+          }
+        });
+
+        if (userWithClients?.clientUserAccounts?.length > 0) {
+          const userClientIds = userWithClients.clientUserAccounts.map(acc => acc.client_id);
+          whereClause.client_id = { in: userClientIds };
+        } else {
+          return {
+            success: true,
+            message: "No client assignments found for user",
+            data: [],
+            summary: {
+              total_orders: 0,
+              orders_by_status: {},
+              total_pallets: 0,
+              unique_customers: 0
+            },
+            filters_applied: filters,
+            user_role: userRole,
+            is_client_filtered: true,
+            report_generated_at: new Date().toISOString(),
+            processing_time_ms: Date.now() - startTime
+          };
+        }
+      } catch (error) {
+        console.error("Error fetching user client assignments:", error);
+        return {
+          success: false,
+          message: "Error fetching user client assignments",
+          error: error.message
+        };
+      }
+    }
+
+    // Fetch entry orders with related data
+    const entryOrders = await prisma.entryOrder.findMany({
+      where: whereClause,
+      include: {
+        client: {
+          select: {
+            client_id: true,
+            client_code: true,
+            client_type: true,
+            company_name: true,
+            first_names: true,
+            last_name: true
+          }
+        },
+        reviewer: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true
+          }
+        },
+        creator: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true
+          }
+        },
+        products: {
+          select: {
+            guide_number: true,
+            inventoryAllocations: {
+              select: {
+                allocated_at: true
+              },
+              orderBy: { allocated_at: 'asc' },
+              take: 1
+            }
+          }
+        }
+      },
+      orderBy: { registration_date: 'desc' }
+    });
+
+    console.log(`📦 Retrieved ${entryOrders.length} entry orders for stock in report`);
+
+    // Format period from date
+    const formatPeriod = (date) => {
+      if (!date) return '';
+      const d = new Date(date);
+      const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      return `${months[d.getMonth()]} ${d.getFullYear()}`;
+    };
+
+    // Transform data into report format
+    const reportData = entryOrders.map(order => {
+      // Get customer info
+      const customerCode = order.client?.client_code || '';
+      const customerName = order.client?.company_name ||
+        `${order.client?.first_names || ''} ${order.client?.last_name || ''}`.trim() || '';
+
+      // Get receiver info (reviewer or creator)
+      const receiver = order.reviewer || order.creator;
+      const receiverName = receiver ? `${receiver.first_name || ''} ${receiver.last_name || ''}`.trim() : '';
+
+      // Get first product's guide number as transport guia
+      const transportGuia = order.products?.[0]?.guide_number || '';
+
+      // Get earliest position assignment date
+      let positionAssignmentDate = null;
+      for (const product of order.products || []) {
+        const allocation = product.inventoryAllocations?.[0];
+        if (allocation?.allocated_at) {
+          if (!positionAssignmentDate || new Date(allocation.allocated_at) < new Date(positionAssignmentDate)) {
+            positionAssignmentDate = allocation.allocated_at;
+          }
+        }
+      }
+
+      return {
+        period: formatPeriod(order.registration_date),
+        entry_order_number: order.entry_order_no || '',
+        entry_order_date_time: order.entry_date_time || order.registration_date,
+        position_assignment_date_time: positionAssignmentDate,
+        customer_code: customerCode,
+        customer_name: customerName,
+        guia_remision_number: order.guide_number || '',
+        guia_transporte_number: transportGuia,
+        order_receiver: receiverName,
+        remarks: order.observation || '',
+        observations: '',
+        // Additional fields for filtering/sorting
+        order_status: order.order_status,
+        total_pallets: order.total_pallets || 0
+      };
+    });
+
+    // Calculate summary
+    const uniqueCustomers = new Set(reportData.map(r => r.customer_code).filter(Boolean));
+    const ordersByStatus = reportData.reduce((acc, order) => {
+      const status = order.order_status || 'UNKNOWN';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {});
+
+    const summary = {
+      total_orders: reportData.length,
+      orders_by_status: ordersByStatus,
+      total_pallets: reportData.reduce((sum, order) => sum + (order.total_pallets || 0), 0),
+      unique_customers: uniqueCustomers.size
+    };
+
+    const processingTime = Date.now() - startTime;
+
+    return {
+      success: true,
+      message: "Stock in report generated successfully",
+      data: reportData,
+      summary,
+      filters_applied: filters,
+      user_role: userRole,
+      is_client_filtered: isClientUser,
+      report_generated_at: new Date().toISOString(),
+      processing_time_ms: processingTime
+    };
+
+  } catch (error) {
+    console.error("Error generating stock in report:", error);
+    return {
+      success: false,
+      message: "Error generating stock in report",
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Generate Stock Out Report - Monthly summary of all dispatch orders
+ * Shows all stock out orders for a specified period
+ * @param {Object} filters - Filter parameters
+ * @param {Object} userContext - User context for role-based filtering
+ * @returns {Object} Stock out report data
+ */
+async function generateStockOutReport(filters = {}, userContext = {}) {
+  const startTime = Date.now();
+  console.log(`📊 STOCK OUT REPORT: Starting report generation at ${new Date().toISOString()}`);
+
+  try {
+    const { userId, userRole } = userContext;
+
+    // Build where clause for departure orders
+    const whereClause = {};
+
+    // Date range filtering (by registration date for period)
+    if (filters.date_from || filters.date_to) {
+      whereClause.registration_date = {};
+
+      if (filters.date_from) {
+        whereClause.registration_date.gte = new Date(filters.date_from);
+      }
+
+      if (filters.date_to) {
+        whereClause.registration_date.lte = new Date(filters.date_to);
+      }
+    }
+
+    // Customer filtering (supports both Client and Customer models)
+    if (filters.customer_name || filters.customer_code) {
+      whereClause.OR = [];
+
+      if (filters.customer_name) {
+        whereClause.OR.push({
+          client: {
+            OR: [
+              { company_name: { contains: filters.customer_name, mode: 'insensitive' } },
+              { first_names: { contains: filters.customer_name, mode: 'insensitive' } },
+              { last_name: { contains: filters.customer_name, mode: 'insensitive' } }
+            ]
+          }
+        });
+        whereClause.OR.push({
+          customer: {
+            name: { contains: filters.customer_name, mode: 'insensitive' }
+          }
+        });
+      }
+
+      if (filters.customer_code) {
+        whereClause.OR.push({
+          client: {
+            client_code: { contains: filters.customer_code, mode: 'insensitive' }
+          }
+        });
+      }
+    }
+
+    // Role-based access control
+    const isClientUser = userRole && !['ADMIN', 'WAREHOUSE_INCHARGE', 'PHARMACIST'].includes(userRole);
+
+    if (isClientUser && userId) {
+      try {
+        const userWithClients = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            clientUserAccounts: {
+              where: { is_active: true },
+              select: { client_id: true }
+            }
+          }
+        });
+
+        if (userWithClients?.clientUserAccounts?.length > 0) {
+          const userClientIds = userWithClients.clientUserAccounts.map(acc => acc.client_id);
+          whereClause.client_id = { in: userClientIds };
+        } else {
+          return {
+            success: true,
+            message: "No client assignments found for user",
+            data: [],
+            summary: {
+              total_orders: 0,
+              orders_by_status: {},
+              total_pallets: 0,
+              unique_customers: 0,
+              dispatched_orders: 0,
+              pending_orders: 0
+            },
+            filters_applied: filters,
+            user_role: userRole,
+            is_client_filtered: true,
+            report_generated_at: new Date().toISOString(),
+            processing_time_ms: Date.now() - startTime
+          };
+        }
+      } catch (error) {
+        console.error("Error fetching user client assignments:", error);
+        return {
+          success: false,
+          message: "Error fetching user client assignments",
+          error: error.message
+        };
+      }
+    }
+
+    // Fetch departure orders with related data
+    const departureOrders = await prisma.departureOrder.findMany({
+      where: whereClause,
+      include: {
+        client: {
+          select: {
+            client_id: true,
+            client_code: true,
+            client_type: true,
+            company_name: true,
+            first_names: true,
+            last_name: true
+          }
+        },
+        customer: {
+          select: {
+            customer_id: true,
+            name: true
+          }
+        },
+        dispatcher: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true
+          }
+        },
+        creator: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true
+          }
+        },
+        departureAllocations: {
+          select: {
+            guide_number: true
+          },
+          take: 1
+        }
+      },
+      orderBy: { registration_date: 'desc' }
+    });
+
+    console.log(`📦 Retrieved ${departureOrders.length} departure orders for stock out report`);
+
+    // Format period from date
+    const formatPeriod = (date) => {
+      if (!date) return '';
+      const d = new Date(date);
+      const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      return `${months[d.getMonth()]} ${d.getFullYear()}`;
+    };
+
+    // Transform data into report format
+    const reportData = departureOrders.map(order => {
+      // Get customer info (from Client or Customer model)
+      let customerCode = '';
+      let customerName = '';
+
+      if (order.client) {
+        customerCode = order.client.client_code || '';
+        customerName = order.client.company_name ||
+          `${order.client.first_names || ''} ${order.client.last_name || ''}`.trim();
+      } else if (order.customer) {
+        customerCode = order.customer.customer_id || '';
+        customerName = order.customer.name || '';
+      }
+
+      // Get dispatcher info
+      const dispatcher = order.dispatcher || order.creator;
+      const dispatcherName = dispatcher ? `${dispatcher.first_name || ''} ${dispatcher.last_name || ''}`.trim() : '';
+
+      // Get transport guia from departure allocations
+      const transportGuia = order.departureAllocations?.[0]?.guide_number || '';
+
+      return {
+        period: formatPeriod(order.registration_date),
+        dispatch_order_number: order.departure_order_no || '',
+        dispatch_order_date_time: order.departure_date_time || order.registration_date,
+        stock_out_date_time: order.dispatched_at,
+        customer_code: customerCode,
+        customer_name: customerName,
+        guia_remision_number: order.dispatch_document_number || '',
+        guia_transporte_number: transportGuia,
+        order_dispatcher: dispatcherName,
+        remarks: order.observation || '',
+        observations: order.dispatch_notes || '',
+        // Additional fields for filtering/sorting
+        order_status: order.order_status,
+        dispatch_status: order.dispatch_status,
+        total_pallets: order.total_pallets || 0
+      };
+    });
+
+    // Calculate summary
+    const uniqueCustomers = new Set(reportData.map(r => r.customer_code).filter(Boolean));
+    const ordersByStatus = reportData.reduce((acc, order) => {
+      const status = order.order_status || 'UNKNOWN';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {});
+
+    const dispatchedOrders = reportData.filter(o => o.dispatch_status === 'DISPATCHED').length;
+    const pendingOrders = reportData.filter(o => o.dispatch_status !== 'DISPATCHED').length;
+
+    const summary = {
+      total_orders: reportData.length,
+      orders_by_status: ordersByStatus,
+      total_pallets: reportData.reduce((sum, order) => sum + (order.total_pallets || 0), 0),
+      unique_customers: uniqueCustomers.size,
+      dispatched_orders: dispatchedOrders,
+      pending_orders: pendingOrders
+    };
+
+    const processingTime = Date.now() - startTime;
+
+    return {
+      success: true,
+      message: "Stock out report generated successfully",
+      data: reportData,
+      summary,
+      filters_applied: filters,
+      user_role: userRole,
+      is_client_filtered: isClientUser,
+      report_generated_at: new Date().toISOString(),
+      processing_time_ms: processingTime
+    };
+
+  } catch (error) {
+    console.error("Error generating stock out report:", error);
+    return {
+      success: false,
+      message: "Error generating stock out report",
+      error: error.message
+    };
+  }
+}
+
 module.exports = {
   generateWarehouseReport,
   generateProductCategoryReport,
@@ -2341,4 +2819,6 @@ module.exports = {
   generateCardexReport,
   generateMasterStatusReport,
   generateMasterOccupancyReport,
+  generateStockInReport,
+  generateStockOutReport,
 };
