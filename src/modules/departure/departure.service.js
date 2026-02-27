@@ -3022,14 +3022,23 @@ async function getComprehensiveDepartureOrders(organisationId = null, userRole =
 
     const whereClause = {};
 
-    // Organisation filter - filter through the order relation
-    if (organisationId) {
-      whereClause.order = {
-        organisation_id: organisationId
-      };
+    // ✅ ROLE-BASED ACCESS CONTROL
+    // WAREHOUSE_INCHARGE and ADMIN users can see all departure orders (no org filter)
+    // Other users (like CLIENT) only see orders from their organization
+    if (userRole && (userRole === 'WAREHOUSE_INCHARGE' || userRole === 'ADMIN')) {
+      // ADMIN and WAREHOUSE users ALWAYS see all orders
+      // They ignore any organizationId filter - they get full system visibility
+      // No organization filtering for ADMIN/WAREHOUSE users
+    } else {
+      // Non-warehouse/admin users: filter by their organization
+      if (organisationId) {
+        whereClause.order = {
+          organisation_id: organisationId
+        };
+      }
     }
 
-    // Role-based filtering
+    // Role-based filtering for CLIENT users
     if (userRole === 'CLIENT') {
       // CLIENT users can only see their own orders
       whereClause.created_by = userId;
@@ -3053,18 +3062,130 @@ async function getComprehensiveDepartureOrders(organisationId = null, userRole =
       where: finalWhereClause
     });
 
-    // ✅ OPTIMIZED: Use cursor-based pagination with larger default page size
-    const paginationResult = await getPaginatedDepartureOrders(
-      finalWhereClause,
-      filters.cursor,
-      filters.pageSize || 50  // Increased default from 20 to 50 for better UX
-    );
+    // ✅ FIXED: Use offset-based pagination with skip/take for unlimited page support
+    const page = parseInt(filters.page) || 1;
+    const limit = parseInt(filters.limit) || 10;
+    const skip = (page - 1) * limit;
 
-    if (!paginationResult.success) {
-      throw new Error(paginationResult.error);
-    }
-
-    const departureOrders = paginationResult.data;
+    // Fetch departure orders with proper offset pagination
+    const departureOrders = await prisma.departureOrder.findMany({
+      where: finalWhereClause,
+      include: {
+        customer: {
+          select: {
+            customer_id: true,
+            name: true
+          }
+        },
+        client: {
+          select: {
+            client_id: true,
+            company_name: true,
+            individual_id: true
+          }
+        },
+        warehouse: {
+          select: {
+            warehouse_id: true,
+            name: true
+          }
+        },
+        creator: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            role: true
+          }
+        },
+        reviewer: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            role: true
+          }
+        },
+        dispatcher: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            role: true
+          }
+        },
+        order: {
+          select: {
+            order_id: true,
+            order_type: true,
+            status: true,
+            created_at: true,
+            organisation: {
+              select: {
+                organisation_id: true,
+                name: true
+              }
+            }
+          }
+        },
+        products: {
+          include: {
+            product: {
+              select: {
+                product_id: true,
+                name: true,
+                product_code: true,
+                manufacturer: true
+              }
+            }
+          }
+        },
+        departureAllocations: {
+          include: {
+            cell: {
+              include: {
+                warehouse: {
+                  select: {
+                    warehouse_id: true,
+                    name: true
+                  }
+                }
+              }
+            },
+            source_allocation: {
+              include: {
+                entry_order_product: {
+                  include: {
+                    entry_order: {
+                      select: {
+                        entry_order_id: true,
+                        entry_order_no: true
+                      }
+                    },
+                    supplier: {
+                      select: {
+                        supplier_id: true,
+                        company_name: true,
+                        name: true,
+                        contact_person: true,
+                        phone: true,
+                        email: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: [
+        { registration_date: 'desc' },
+        { departure_order_id: 'desc' }
+      ],
+      skip: skip,
+      take: limit
+    });
 
     // Transform data to comprehensive format
     const comprehensiveOrders = await Promise.all(departureOrders.map(async (order) => {
@@ -3322,7 +3443,14 @@ async function getComprehensiveDepartureOrders(organisationId = null, userRole =
         user_id: userRole === 'CLIENT' ? userId : null,
         additional_filters: filters,
       },
-      pagination: paginationResult.pagination
+      pagination: {
+        current_page: page,
+        per_page: limit,
+        total_items: totalCount,
+        total_pages: Math.ceil(totalCount / limit),
+        has_next_page: page < Math.ceil(totalCount / limit),
+        has_previous_page: page > 1
+      }
     };
 
   } catch (error) {

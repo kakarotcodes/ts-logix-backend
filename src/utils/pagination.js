@@ -64,10 +64,11 @@ async function getCursorPaginatedResults(options) {
       ...cursorCondition
     };
 
-    // Build order by
+    // Build order by - prioritize custom orderBy over cursorField for proper sorting
+    // Custom orderBy should come first (e.g., registration_date), then cursorField as tiebreaker
     let orderByConditions = {
-      [cursorField]: sortOrder,
-      ...orderBy
+      ...orderBy,
+      [cursorField]: sortOrder
     };
     // Ensure orderBy is always an array
     if (!Array.isArray(orderByConditions)) {

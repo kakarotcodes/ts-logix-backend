@@ -1460,6 +1460,7 @@ async function getComprehensiveDepartureOrders(req, res) {
     // Extract query parameters
     const {
       organisationId: queryOrgId,
+      orderNo,
       status,
       startDate,
       endDate,
@@ -1481,17 +1482,18 @@ async function getComprehensiveDepartureOrders(req, res) {
       });
     }
 
-    // Build filters - pass pageSize to service so it fetches enough data
+    // Build filters - pass page and limit to service for proper pagination
     const filters = {};
+    if (orderNo) filters.search = orderNo;  // Map orderNo to search for service compatibility
     if (status) filters.status = status;
     if (startDate) filters.startDate = startDate;
     if (endDate) filters.endDate = endDate;
     if (warehouseId) filters.warehouseId = warehouseId;
     if (clientId) filters.clientId = clientId;
 
-    // Calculate required pageSize - fetch enough records to cover requested page
-    // This ensures we have all data needed for the requested page
-    filters.pageSize = parseInt(page) * parseInt(limit);
+    // ✅ FIXED: Pass page and limit directly for proper offset-based pagination
+    filters.page = parseInt(page);
+    filters.limit = parseInt(limit);
 
     // Call service to get comprehensive departure orders
     const result = await departureService.getComprehensiveDepartureOrders(
@@ -1501,13 +1503,11 @@ async function getComprehensiveDepartureOrders(req, res) {
       filters
     );
 
-    // Apply pagination
-    const startIndex = (parseInt(page) - 1) * parseInt(limit);
-    const endIndex = startIndex + parseInt(limit);
-    const paginatedData = result.data.slice(startIndex, endIndex);
+    // ✅ FIXED: Service now returns paginated data directly, no need to slice
+    const paginatedData = result.data;
 
-    // ✅ FIXED: Use actual totalCount from service instead of result.data.length
-    const totalItems = result.totalCount || result.data.length;
+    // Use totalCount from service for proper pagination info
+    const totalItems = result.totalCount || 0;
     const totalPages = Math.ceil(totalItems / parseInt(limit));
 
     // Success response
