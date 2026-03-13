@@ -179,7 +179,7 @@ async function getClientById(req, res) {
     
     // ✅ LOG: Client details access
     await req.logEvent(
-      'CLIENT_DETAILS_ACCESSED',
+      'CLIENT_PROFILE_VIEWED',
       'Client',
       client_id,
       `User accessed client details for client ${client_id}`,
@@ -190,7 +190,7 @@ async function getClientById(req, res) {
         accessor_role: userRole,
         access_timestamp: new Date().toISOString()
       },
-      { operation_type: 'CLIENT_MANAGEMENT', action_type: 'DETAILS_ACCESS' }
+      { operation_type: 'CLIENT_MANAGEMENT', action_type: 'PROFILE_VIEW' }
     );
 
     const client = await clientService.getClientById(client_id);

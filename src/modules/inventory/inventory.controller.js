@@ -501,12 +501,12 @@ async function getQuarantineInventory(req, res) {
 async function getInventoryByQualityStatus(req, res) {
   try {
     const userRole = req.user?.role;
-    const { quality_status, warehouse_id } = req.query;
+    const { quality_status, warehouse_id, entry_order_ids } = req.query;
 
     // Only warehouse, admin, and pharmacist can access quality control
     if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN" && userRole !== "PHARMACIST") {
-      return res.status(403).json({ 
-        message: "Access denied. Only warehouse staff and pharmacists can access quality control." 
+      return res.status(403).json({
+        message: "Access denied. Only warehouse staff and pharmacists can access quality control."
       });
     }
 
@@ -518,7 +518,10 @@ async function getInventoryByQualityStatus(req, res) {
       });
     }
 
-    const inventoryItems = await inventoryService.getInventoryByQualityStatus(quality_status, warehouse_id);
+    // Parse entry_order_ids if provided (comma-separated string)
+    const entryOrderIdsArray = entry_order_ids ? entry_order_ids.split(',').map(id => id.trim()).filter(Boolean) : null;
+
+    const inventoryItems = await inventoryService.getInventoryByQualityStatus(quality_status, warehouse_id, entryOrderIdsArray);
     
     // Transform data for better readability
     const transformedData = inventoryItems.map(item => ({

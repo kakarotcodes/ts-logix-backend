@@ -1824,7 +1824,7 @@ async function getQuarantineInventory(warehouseId = null) {
 }
 
 // ✅ NEW: Get inventory allocations by any quality status (dynamic)
-async function getInventoryByQualityStatus(qualityStatus, warehouseId = null) {
+async function getInventoryByQualityStatus(qualityStatus, warehouseId = null, entryOrderIds = null) {
   // Validate quality status
   const validStatuses = ["CUARENTENA", "APROBADO", "DEVOLUCIONES", "CONTRAMUESTRAS", "RECHAZADOS"];
   if (!validStatuses.includes(qualityStatus)) {
@@ -1841,6 +1841,13 @@ async function getInventoryByQualityStatus(qualityStatus, warehouseId = null) {
   if (warehouseId) {
     where.cell = {
       warehouse_id: warehouseId
+    };
+  }
+
+  // ✅ NEW: Filter by multiple entry order IDs (array support)
+  if (entryOrderIds && Array.isArray(entryOrderIds) && entryOrderIds.length > 0) {
+    where.entry_order_product = {
+      entry_order_id: { in: entryOrderIds }
     };
   }
 
