@@ -5188,6 +5188,10 @@ async function getApprovedDepartureOrdersForDispatch(warehouseId = null, userRol
   try {
     const whereClause = {
       order_status: 'APPROVED', // Only approved orders can be dispatched
+      // ✅ FIXED: Exclude already dispatched orders
+      dispatch_status: {
+        not: 'DISPATCHED'
+      }
     };
 
     // ✅ ORGANISATION FILTERING: Filter by organization if provided
@@ -5301,8 +5305,8 @@ async function getApprovedDepartureOrdersForDispatch(warehouseId = null, userRol
         include: {
                   inventory: {
           where: {
+            status: "AVAILABLE",  // ✅ FIXED: Only include AVAILABLE inventory, exclude HOLD
             current_quantity: { gt: 0 }
-            // ✅ REMOVED: No longer filter by status - include HOLD and AVAILABLE
           },
           select: {
             inventory_id: true,
@@ -5419,8 +5423,9 @@ async function getApprovedDepartureOrdersForDispatch(warehouseId = null, userRol
             fifo_score: expiryDate ? expiryDate.getTime() : 0
           };
 
-          // Only check quality status, not inventory status (HOLD/AVAILABLE)
-          const isDispatchable = allocation.quality_status === "APROBADO";
+          // ✅ FIXED: Check BOTH quality status AND inventory status
+          const isDispatchable = allocation.quality_status === "APROBADO" &&
+                                 inventory.status === "AVAILABLE";
 
           // Create location object once
           const locationData = {
@@ -5437,8 +5442,10 @@ async function getApprovedDepartureOrdersForDispatch(warehouseId = null, userRol
             inventory_status: inventory.status,
             quality_status: allocation.quality_status,
             can_dispatch_from_here: isDispatchable,
-            blocking_reason: allocation.quality_status !== "APROBADO" ? 
-              `Quality status: ${allocation.quality_status}` : null,
+            blocking_reason: allocation.quality_status !== "APROBADO" ?
+              `Quality status: ${allocation.quality_status}` :
+              inventory.status !== "AVAILABLE" ?
+              `Inventory status: ${inventory.status}` : null,
             presentation: allocation.presentation,
             product_status: allocation.product_status,
             status_code: allocation.status_code,

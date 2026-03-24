@@ -289,6 +289,307 @@ class EmailService {
   }
 
   /**
+   * Send entry order notification email
+   * @param {Object} entryOrderData - Entry order information
+   * @param {Object} clientData - Client information
+   * @param {string} status - Order status (APROBADO, RECHAZADO, REVISION, etc.)
+   * @param {string} comments - Admin comments
+   * @param {Object} reviewerData - Reviewer information
+   * @returns {Promise<Object>} Email send result
+   */
+  async sendEntryOrderNotification(entryOrderData, clientData, status, comments = '', reviewerData = null) {
+    try {
+      const clientName = clientData.client_type === 'JURIDICO'
+        ? clientData.company_name
+        : `${clientData.first_names} ${clientData.last_name}`;
+
+      // Determine status text and action
+      let statusText = '';
+      let actionText = '';
+      let statusClass = '';
+
+      switch (status) {
+        case 'APROBADO':
+          statusText = 'APROBADO';
+          actionText = 'aprobada';
+          statusClass = 'approved';
+          break;
+        case 'RECHAZADO':
+          statusText = 'RECHAZADO';
+          actionText = 'rechazada';
+          statusClass = 'rejected';
+          break;
+        case 'REVISION':
+          statusText = 'REQUIERE REVISIÓN';
+          actionText = 'marcada para revisión';
+          statusClass = 'revision';
+          break;
+        default:
+          statusText = 'ACTUALIZADO';
+          actionText = 'actualizada';
+          statusClass = 'pending';
+      }
+
+      const subject = `Orden de Ingreso ${entryOrderData.entry_order_no} - ${statusText}`;
+
+      const templateData = {
+        clientName,
+        entryOrderNo: entryOrderData.entry_order_no,
+        registrationDate: new Date(entryOrderData.registration_date).toLocaleDateString('es-PE'),
+        supplierName: entryOrderData.supplier_name || 'N/A',
+        totalProducts: entryOrderData.total_products || 0,
+        totalQuantity: entryOrderData.total_quantity || 0,
+        totalWeight: entryOrderData.total_weight || 0,
+        statusText,
+        actionText,
+        statusClass,
+        comments: comments || null,
+        reviewedBy: reviewerData ? `${reviewerData.first_name} ${reviewerData.last_name}` : null,
+        reviewedAt: reviewerData ? new Date().toLocaleDateString('es-PE') : null,
+        isApproved: status === 'APROBADO',
+        isRejected: status === 'RECHAZADO',
+        needsRevision: status === 'REVISION',
+        orderUrl: `${process.env.FRONTEND_URL || 'http://localhost:7072'}/processes/entry/${entryOrderData.entry_order_id}`,
+        supportEmail: process.env.SUPPORT_EMAIL || 'support@tslogix.com',
+        companyName: 'TSLogix',
+        currentYear: new Date().getFullYear(),
+      };
+
+      return await this.sendTemplatedEmail({
+        to: clientData.email,
+        subject,
+        template: 'entry-order-notification',
+        data: templateData
+      });
+
+    } catch (error) {
+      console.error('❌ Error sending entry order notification email:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send dispatch/departure order notification email
+   * @param {Object} departureOrderData - Departure order information
+   * @param {Object} clientData - Client information
+   * @param {string} status - Order status (APROBADO, RECHAZADO, DESPACHADO, etc.)
+   * @param {string} comments - Admin comments
+   * @param {Object} reviewerData - Reviewer information
+   * @returns {Promise<Object>} Email send result
+   */
+  async sendDispatchOrderNotification(departureOrderData, clientData, status, comments = '', reviewerData = null) {
+    try {
+      const clientName = clientData.client_type === 'JURIDICO'
+        ? clientData.company_name
+        : `${clientData.first_names} ${clientData.last_name}`;
+
+      // Determine status text and action
+      let statusText = '';
+      let actionText = '';
+      let statusClass = '';
+
+      switch (status) {
+        case 'APROBADO':
+          statusText = 'APROBADO';
+          actionText = 'aprobada';
+          statusClass = 'approved';
+          break;
+        case 'DESPACHADO':
+          statusText = 'DESPACHADO';
+          actionText = 'despachada';
+          statusClass = 'dispatched';
+          break;
+        case 'RECHAZADO':
+          statusText = 'RECHAZADO';
+          actionText = 'rechazada';
+          statusClass = 'rejected';
+          break;
+        case 'REVISION':
+          statusText = 'REQUIERE REVISIÓN';
+          actionText = 'marcada para revisión';
+          statusClass = 'revision';
+          break;
+        default:
+          statusText = 'ACTUALIZADO';
+          actionText = 'actualizada';
+          statusClass = 'pending';
+      }
+
+      const subject = `Orden de Despacho ${departureOrderData.departure_order_no} - ${statusText}`;
+
+      const templateData = {
+        clientName,
+        departureOrderNo: departureOrderData.departure_order_no,
+        createdDate: new Date(departureOrderData.created_at).toLocaleDateString('es-PE'),
+        destination: departureOrderData.destination || departureOrderData.arrival_point || null,
+        totalProducts: departureOrderData.total_products || 0,
+        totalQuantity: departureOrderData.total_quantity || 0,
+        totalWeight: departureOrderData.total_weight || 0,
+        statusText,
+        actionText,
+        statusClass,
+        comments: comments || null,
+        reviewedBy: reviewerData ? `${reviewerData.first_name} ${reviewerData.last_name}` : null,
+        reviewedAt: reviewerData ? new Date().toLocaleDateString('es-PE') : null,
+        isApproved: status === 'APROBADO',
+        isDispatched: status === 'DESPACHADO',
+        isRejected: status === 'RECHAZADO',
+        needsRevision: status === 'REVISION',
+        dispatchDate: departureOrderData.dispatch_date ? new Date(departureOrderData.dispatch_date).toLocaleDateString('es-PE') : null,
+        transportType: departureOrderData.transport_type || null,
+        driverName: departureOrderData.driver_name || null,
+        vehiclePlate: departureOrderData.vehicle_plate || null,
+        dispatchNotes: departureOrderData.dispatch_notes || null,
+        orderUrl: `${process.env.FRONTEND_URL || 'http://localhost:7072'}/processes/departure/${departureOrderData.departure_order_id}`,
+        supportEmail: process.env.SUPPORT_EMAIL || 'support@tslogix.com',
+        companyName: 'TSLogix',
+        currentYear: new Date().getFullYear(),
+      };
+
+      return await this.sendTemplatedEmail({
+        to: clientData.email,
+        subject,
+        template: 'dispatch-order-notification',
+        data: templateData
+      });
+
+    } catch (error) {
+      console.error('❌ Error sending dispatch order notification email:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send warehouse alert for new entry order
+   * @param {Object} entryOrderData - Entry order information
+   * @param {Object} clientData - Client information
+   * @param {Array} warehouseInchargeEmails - Warehouse in-charge email addresses
+   * @returns {Promise<Object>} Email send result
+   */
+  async sendWarehouseEntryOrderAlert(entryOrderData, clientData, warehouseInchargeEmails = []) {
+    try {
+      const clientName = clientData.client_type === 'JURIDICO'
+        ? clientData.company_name
+        : `${clientData.first_names} ${clientData.last_name}`;
+
+      const subject = `Nueva Orden de Ingreso ${entryOrderData.entry_order_no} - Requiere Revisión`;
+
+      const templateData = {
+        warehouseInchargeName: 'Coordinador de Almacén',
+        clientName,
+        clientCode: clientData.client_code,
+        clientType: clientData.client_type === 'JURIDICO' ? 'Persona Jurídica' : 'Persona Natural',
+        clientEmail: clientData.email,
+        clientPhone: clientData.phone || clientData.cell_phone || null,
+        entryOrderNo: entryOrderData.entry_order_no,
+        registrationDate: new Date(entryOrderData.registration_date).toLocaleDateString('es-PE'),
+        documentDate: entryOrderData.document_date ? new Date(entryOrderData.document_date).toLocaleDateString('es-PE') : 'N/A',
+        supplierName: entryOrderData.supplier_name || 'N/A',
+        totalProducts: entryOrderData.total_products || 0,
+        totalQuantity: entryOrderData.total_quantity || 0,
+        totalWeight: entryOrderData.total_weight || 0,
+        observations: entryOrderData.observations || null,
+        orderUrl: `${process.env.FRONTEND_URL || 'http://localhost:7072'}/processes/entry/${entryOrderData.entry_order_id}`,
+        currentYear: new Date().getFullYear(),
+      };
+
+      // Get warehouse emails from parameter or environment
+      const emails = warehouseInchargeEmails.length > 0 ?
+        warehouseInchargeEmails :
+        (process.env.WAREHOUSE_EMAILS ?
+          process.env.WAREHOUSE_EMAILS.split(',').map(email => email.trim()) :
+          ['warehouse@tslogix.com']);
+
+      // Send to all warehouse emails
+      const results = await Promise.all(
+        emails.map(email =>
+          this.sendTemplatedEmail({
+            to: email,
+            subject,
+            template: 'warehouse-entry-order-alert',
+            data: templateData
+          })
+        )
+      );
+
+      return {
+        success: true,
+        results,
+        emailCount: emails.length
+      };
+
+    } catch (error) {
+      console.error('❌ Error sending warehouse entry order alert:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send warehouse alert for new dispatch order
+   * @param {Object} departureOrderData - Departure order information
+   * @param {Object} clientData - Client information
+   * @param {Array} warehouseInchargeEmails - Warehouse in-charge email addresses
+   * @returns {Promise<Object>} Email send result
+   */
+  async sendWarehouseDispatchOrderAlert(departureOrderData, clientData, warehouseInchargeEmails = []) {
+    try {
+      const clientName = clientData.client_type === 'JURIDICO'
+        ? clientData.company_name
+        : `${clientData.first_names} ${clientData.last_name}`;
+
+      const subject = `Nueva Orden de Despacho ${departureOrderData.departure_order_no} - Requiere Revisión`;
+
+      const templateData = {
+        warehouseInchargeName: 'Coordinador de Almacén',
+        clientName,
+        clientCode: clientData.client_code,
+        clientType: clientData.client_type === 'JURIDICO' ? 'Persona Jurídica' : 'Persona Natural',
+        clientEmail: clientData.email,
+        clientPhone: clientData.phone || clientData.cell_phone || null,
+        departureOrderNo: departureOrderData.departure_order_no,
+        createdDate: new Date(departureOrderData.created_at).toLocaleDateString('es-PE'),
+        destination: departureOrderData.destination || departureOrderData.arrival_point || null,
+        transportType: departureOrderData.transport_type || null,
+        totalProducts: departureOrderData.total_products || 0,
+        totalQuantity: departureOrderData.total_quantity || 0,
+        totalWeight: departureOrderData.total_weight || 0,
+        observations: departureOrderData.observations || null,
+        orderUrl: `${process.env.FRONTEND_URL || 'http://localhost:7072'}/processes/departure/${departureOrderData.departure_order_id}`,
+        currentYear: new Date().getFullYear(),
+      };
+
+      // Get warehouse emails from parameter or environment
+      const emails = warehouseInchargeEmails.length > 0 ?
+        warehouseInchargeEmails :
+        (process.env.WAREHOUSE_EMAILS ?
+          process.env.WAREHOUSE_EMAILS.split(',').map(email => email.trim()) :
+          ['warehouse@tslogix.com']);
+
+      // Send to all warehouse emails
+      const results = await Promise.all(
+        emails.map(email =>
+          this.sendTemplatedEmail({
+            to: email,
+            subject,
+            template: 'warehouse-dispatch-order-alert',
+            data: templateData
+          })
+        )
+      );
+
+      return {
+        success: true,
+        results,
+        emailCount: emails.length
+      };
+
+    } catch (error) {
+      console.error('❌ Error sending warehouse dispatch order alert:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Test email configuration
    * @returns {Promise<Object>} Test result
    */

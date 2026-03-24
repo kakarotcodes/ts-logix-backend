@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Actualización de Orden de Ingreso - TSLogix</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+            margin: -30px -30px 30px -30px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+        .status-approved {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-rejected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status-revision {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-pending {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        .order-details {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .detail-label {
+            font-weight: 600;
+            color: #555;
+        }
+        .detail-value {
+            color: #333;
+            text-align: right;
+        }
+        .comments-box {
+            background-color: #fff8e1;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white !important;
+            text-decoration: none;
+            border-radius: 6px;
+            margin: 20px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚛 TSLogix - Sistema de Almacén</h1>
+            <p style="margin: 5px 0 0 0;">Actualización de Orden de Ingreso</p>
+        </div>
+
+        <p>Estimado/a <strong>{{clientName}}</strong>,</p>
+
+        <p>Su orden de ingreso ha sido <strong>{{actionText}}</strong>.</p>
+
+        <div style="text-align: center;">
+            <span class="status-badge status-{{statusClass}}">
+                {{statusText}}
+            </span>
+        </div>
+
+        <div class="order-details">
+            <h3 style="margin-top: 0; color: #667eea;">📋 Detalles de la Orden</h3>
+
+            <div class="detail-row">
+                <span class="detail-label">Número de Orden:</span>
+                <span class="detail-value">{{entryOrderNo}}</span>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">Fecha de Registro:</span>
+                <span class="detail-value">{{registrationDate}}</span>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">Proveedor:</span>
+                <span class="detail-value">{{supplierName}}</span>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">Total de Productos:</span>
+                <span class="detail-value">{{totalProducts}}</span>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">Cantidad Total:</span>
+                <span class="detail-value">{{totalQuantity}} unidades</span>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">Peso Total:</span>
+                <span class="detail-value">{{totalWeight}} kg</span>
+            </div>
+
+            {{#if reviewedBy}}
+            <div class="detail-row">
+                <span class="detail-label">Revisado Por:</span>
+                <span class="detail-value">{{reviewedBy}}</span>
+            </div>
+            {{/if}}
+
+            {{#if reviewedAt}}
+            <div class="detail-row">
+                <span class="detail-label">Fecha de Revisión:</span>
+                <span class="detail-value">{{reviewedAt}}</span>
+            </div>
+            {{/if}}
+        </div>
+
+        {{#if comments}}
+        <div class="comments-box">
+            <h4 style="margin-top: 0; color: #856404;">💬 Comentarios del Administrador</h4>
+            <p style="margin: 0;">{{comments}}</p>
+        </div>
+        {{/if}}
+
+        {{#if isApproved}}
+        <p>✅ Su orden ha sido aprobada y está lista para la asignación de inventario.</p>
+        {{/if}}
+
+        {{#if isRejected}}
+        <p>❌ Su orden ha sido rechazada. Por favor revise los comentarios del administrador y contacte con nuestro equipo para más información.</p>
+        {{/if}}
+
+        {{#if needsRevision}}
+        <p>⚠️ Su orden requiere revisión. Por favor revise los comentarios del administrador y realice las correcciones necesarias.</p>
+        {{/if}}
+
+        <div style="text-align: center;">
+            <a href="{{orderUrl}}" class="btn">Ver Orden Completa</a>
+        </div>
+
+        <div class="footer">
+            <p><strong>TSLogix - Sistema de Gestión de Almacén</strong></p>
+            <p>Si tiene preguntas, contáctenos en: <a href="mailto:{{supportEmail}}">{{supportEmail}}</a></p>
+            <p>&copy; {{currentYear}} TSLogix. Todos los derechos reservados.</p>
+        </div>
+    </div>
+</body>
+</html>

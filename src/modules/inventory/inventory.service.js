@@ -2475,6 +2475,31 @@ async function transitionQualityStatus(transitionData) {
       }
     );
 
+    // ✅ Check if all products in the entry order are now APROBADO and update order_status to TERMINADO
+    if (to_status === "APROBADO" && allocation.entry_order_id) {
+      // Get all allocations for this entry order
+      const allAllocations = await tx.inventoryAllocation.findMany({
+        where: {
+          entry_order_id: allocation.entry_order_id,
+          status: "ACTIVE"
+        },
+        select: { quality_status: true, inventory_quantity: true }
+      });
+
+      // Check if all allocations are APROBADO
+      const allApproved = allAllocations.every(alloc => alloc.quality_status === "APROBADO");
+      const hasAllocations = allAllocations.length > 0;
+
+      if (allApproved && hasAllocations) {
+        // Update entry order status to TERMINADO
+        await tx.entryOrder.update({
+          where: { entry_order_id: allocation.entry_order_id },
+          data: { order_status: "TERMINADO" }
+        });
+        console.log(`✅ All products approved - Entry order ${allocation.entry_order_id} status updated to TERMINADO`);
+      }
+    }
+
     return {
       transition,
       original_allocation: allocation,
@@ -3522,6 +3547,12 @@ async function bulkAssignEntryOrder(bulkAssignmentData) {
 
     const isFullyAllocated = totalAllocated >= totalQuantity;
     const allocationPercentage = totalQuantity > 0 ? (totalAllocated / totalQuantity) * 100 : 0;
+
+    // ✅ Update order_status to RECIBIDO when inventory is assigned
+    await tx.entryOrder.update({
+      where: { entry_order_id },
+      data: { order_status: "RECIBIDO" }
+    });
 
     // 9. Create audit log
     await createAuditLog(

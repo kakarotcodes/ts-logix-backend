@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nueva Orden de Ingreso - TSLogix</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+            margin: -30px -30px 30px -30px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .alert-badge {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #ffc107;
+            color: #000;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        .order-details {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .detail-label {
+            font-weight: 600;
+            color: #555;
+        }
+        .detail-value {
+            color: #333;
+            text-align: right;
+        }
+        .client-info {
+            background-color: #e8eaf6;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .action-required {
+            background-color: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white !important;
+            text-decoration: none;
+            border-radius: 6px;
+            margin: 20px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📦 TSLogix - Almacén</h1>
+            <p style="margin: 5px 0 0 0;">Nueva Orden de Ingreso Recibida</p>
+        </div>
+
+        <div style="text-align: center;">
+            <span class="alert-badge">🔔 ¡ACCIÓN REQUERIDA!</span>
+        </div>
+
+        <p>Estimado/a <strong>{{warehouseInchargeName}}</strong>,</p>
+
+        <p>Se ha creado una <strong>nueva orden de ingreso</strong> que requiere su revisión y aprobación.</p>
+
+        <div class="client-info">
+            <h4 style="margin-top: 0; color: #667eea;">👤 Información del Cliente</h4>
+            <p style="margin: 5px 0;"><strong>Cliente:</strong> {{clientName}}</p>
+            <p style="margin: 5px 0;"><strong>Código Cliente:</strong> {{clientCode}}</p>
+            <p style="margin: 5px 0;"><strong>Tipo:</strong> {{clientType}}</p>
+            <p style="margin: 5px 0;"><strong>Email:</strong> {{clientEmail}}</p>
+            {{#if clientPhone}}
+            <p style="margin: 5px 0;"><strong>Teléfono:</strong> {{clientPhone}}</p>
+            {{/if}}
+        </div>
+
+        <div class="order-details">
+            <h3 style="margin-top: 0; color: #667eea;">📋 Detalles de la Orden</h3>
+
+            <div class="detail-row">
+                <span class="detail-label">Número de Orden:</span>
+                <span class="detail-value"><strong>{{entryOrderNo}}</strong></span>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">Fecha de Registro:</span>
+                <span class="detail-value">{{registrationDate}}</span>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">Fecha del Documento:</span>
+                <span class="detail-value">{{documentDate}}</span>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">Proveedor:</span>
+                <span class="detail-value">{{supplierName}}</span>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">Total de Productos:</span>
+                <span class="detail-value">{{totalProducts}}</span>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">Cantidad Total:</span>
+                <span class="detail-value">{{totalQuantity}} unidades</span>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">Peso Total:</span>
+                <span class="detail-value">{{totalWeight}} kg</span>
+            </div>
+
+            {{#if observations}}
+            <div class="detail-row" style="border-bottom: none;">
+                <span class="detail-label">Observaciones:</span>
+            </div>
+            <div style="padding: 10px; background-color: #fff; border-radius: 4px; margin-top: 5px;">
+                {{observations}}
+            </div>
+            {{/if}}
+        </div>
+
+        <div class="action-required">
+            <h3 style="margin-top: 0; color: #856404;">⚠️ Acción Requerida</h3>
+            <p style="margin: 10px 0;">Por favor revise esta orden y tome una de las siguientes acciones:</p>
+            <ul style="text-align: left; display: inline-block; margin: 10px 0;">
+                <li><strong>Aprobar:</strong> Si la orden cumple con todos los requisitos</li>
+                <li><strong>Rechazar:</strong> Si hay problemas que impiden el ingreso</li>
+                <li><strong>Solicitar Revisión:</strong> Si se requieren correcciones del cliente</li>
+            </ul>
+        </div>
+
+        <div style="text-align: center;">
+            <a href="{{orderUrl}}" class="btn">Revisar y Aprobar Orden</a>
+        </div>
+
+        <p style="font-size: 14px; color: #666; margin-top: 20px;">
+            <strong>Nota:</strong> Esta orden permanecerá en estado <strong>PENDIENTE</strong> hasta que sea revisada por el personal del almacén.
+        </p>
+
+        <div class="footer">
+            <p><strong>TSLogix - Sistema de Gestión de Almacén</strong></p>
+            <p>Esta es una notificación automática. No responder a este correo.</p>
+            <p>&copy; {{currentYear}} TSLogix. Todos los derechos reservados.</p>
+        </div>
+    </div>
+</body>
+</html>

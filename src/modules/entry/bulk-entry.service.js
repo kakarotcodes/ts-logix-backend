@@ -379,7 +379,7 @@ async function validateEntryOrdersWithMapping(entryOrders, userId, userRole) {
     // Optional fields
     mappedRow.guide_number = row['Guide Number'] || '';
     mappedRow.observation = row['Observation'] || '';
-    mappedRow.order_status = 'REVISION'; // Auto-set as per frontend
+    mappedRow.order_status = 'PENDIENTE'; // Auto-set to pending when customer creates order
 
     if (rowErrors.length === 0) {
       validData.push({

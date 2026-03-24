@@ -41,7 +41,7 @@ async function createEntryOrder(entryData) {
         client_id: entryData.client_id || null,  // Add client_id for CLIENT users
 
         // Order details
-        order_status: entryData.order_status || OrderStatusEntry.REVISION,
+        order_status: entryData.order_status || OrderStatusEntry.PENDIENTE,
         total_volume: parseFloat(entryData.total_volume) || null,
         total_weight: parseFloat(entryData.total_weight) || null,
         cif_value: parseFloat(entryData.cif_value) || null,
@@ -1098,6 +1098,18 @@ async function reviewEntryOrder(orderNo, reviewData) {
       return null;
     }
 
+    // ✅ Update order_status based on review_status:
+    // PENDING → PENDIENTE (customer creates order)
+    // APPROVED → APROBADO (warehouse approves it)
+    // REJECTED/NEEDS_REVISION → keep as PENDIENTE
+    let newOrderStatus = entryOrder.order_status;
+    if (reviewData.review_status === ReviewStatus.APPROVED) {
+      newOrderStatus = OrderStatusEntry.APROBADO;
+    } else if (reviewData.review_status === ReviewStatus.PENDING ||
+               reviewData.review_status === ReviewStatus.NEEDS_REVISION) {
+      newOrderStatus = OrderStatusEntry.PENDIENTE;
+    }
+
     const updatedOrder = await tx.entryOrder.update({
       where: { entry_order_id: entryOrder.entry_order_id },
       data: {
@@ -1105,6 +1117,7 @@ async function reviewEntryOrder(orderNo, reviewData) {
         review_comments: reviewData.review_comments,
         reviewed_by: reviewData.reviewed_by,
         reviewed_at: reviewData.reviewed_at,
+        order_status: newOrderStatus,
       },
       include: {
         creator: {

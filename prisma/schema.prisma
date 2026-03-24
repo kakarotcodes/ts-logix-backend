@@ -88,9 +88,10 @@ enum DocumentTypeDeparture {
 }
 
 enum OrderStatusEntry {
-  REVISION      // Review
-  PRESENTACION  // Presentation
-  FINALIZACION  // Finalization
+  PENDIENTE    // Pending - when customer creates order
+  APROBADO     // Approved - when warehouse approves it
+  RECIBIDO     // Received - when warehouse assigns inventory
+  TERMINADO    // Completed - when QF transfers from Cuarentena to Aprobado
 }
 
 enum OrderStatusDeparture {
@@ -945,7 +946,7 @@ model EntryOrder {
   client_id                   String?             // ✅ NEW: Direct reference to client (nullable for migration)
   
   // Order details
-  order_status                OrderStatusEntry    @default(REVISION)
+  order_status                OrderStatusEntry    @default(PENDIENTE)
   total_volume                Decimal?            @db.Decimal(10, 2)
   total_weight                Decimal?            @db.Decimal(10, 2)
   cif_value                   Decimal?            @db.Decimal(10, 2)
