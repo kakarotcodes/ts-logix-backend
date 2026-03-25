@@ -536,7 +536,13 @@ async function getEntryFormFields(userRole = null, userId = null) {
         email: true,
         ruc: true,
         individual_id: true,
-        is_active: true,
+        active_state_id: true,
+        active_state: {
+          select: {
+            state_id: true,
+            name: true,
+          }
+        },
       },
     }) :
     Promise.resolve([]);

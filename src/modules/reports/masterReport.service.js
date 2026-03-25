@@ -292,17 +292,14 @@ async function transformToMasterReport(transactions, unallocatedInventory = []) 
     // Determine customer information
     let customerCode = '';
     let customerName = '';
-    let customerAddress = '';
 
     // For dispatch customer
     if (depOrder?.client) {
       customerCode = depOrder.client.client_code || '';
       customerName = depOrder.client.company_name || `${depOrder.client.first_names || ''} ${depOrder.client.last_name || ''}`.trim();
-      customerAddress = depOrder.client.address || '';
     } else if (depOrder?.customer) {
       customerCode = depOrder.customer.customer_code || '';
       customerName = depOrder.customer.name || '';
-      customerAddress = depOrder.customer.address || '';
     }
 
     // For entry customer (if different)
@@ -335,62 +332,60 @@ async function transformToMasterReport(transactions, unallocatedInventory = []) 
       customer_code: customerCode,
       customer_name: customerName,
       product_code: product?.product_code || '',
-      product_name: product?.product_name || '',
-      product_category: product?.category?.category_name || '',
-      product_subcategory1: product?.subcategory1?.subcategory_name || '',
-      product_subcategory2: product?.subcategory2?.subcategory_name || '',
+      product_name: product?.name || '',
+      product_category: product?.category?.name || '',
+      product_subcategory1: product?.subcategory1?.name || '',
+      product_subcategory2: product?.subcategory2?.name || '',
 
-      // Packaging Information
-      packing_type: getPackagingType(entryProduct?.packaging_type),
-      packing_condition: getPackagingCondition(entryProduct?.packaging_status),
+      // ✅ NEW: Position / Pallet field (ADDED - Missing field #1)
+      position_pallet: invAllocation?.cell ?
+        `${invAllocation.cell.row}.${String(invAllocation.cell.bay).padStart(2, '0')}.${String(invAllocation.cell.position).padStart(2, '0')}` : '',
+
+      // Packaging Information (keeping only packing_condition, REMOVED packing_type)
+      packing_condition: getPackagingCondition(invAllocation?.product_status),
 
       // Entry Order Information
       entry_order_number: entryOrder?.entry_order_no || '',
       entry_order_date: entryOrder?.entry_date_time ? new Date(entryOrder.entry_date_time).toISOString().split('T')[0] : '',
-      entry_order_guia: entryOrder?.guia_remision || '',
-      entry_order_transport_guia: entryOrder?.transport_company_guide || '',
-      entry_order_quantity: parseFloat(transaction.allocated_quantity || 0),
+      entry_order_guide_number: entryProduct?.guide_number || entryOrder?.guide_number || '',
+      entry_order_quantity: parseFloat(invAllocation?.inventory_quantity || 0),
+      entry_order_packages: parseFloat(invAllocation?.package_quantity || 0),
+      entry_order_weight: parseFloat(invAllocation?.weight_kg || 0),
       entry_order_unit_cost: entryUnitCost.toFixed(2),
       entry_order_total_cost: entryTotalCost.toFixed(2),
-      entry_order_currency: entryOrder?.currency || 'USD',
-      entry_order_supplier_code: entryOrder?.supplier?.supplier_code || '',
-      entry_order_supplier_name: entryOrder?.supplier?.name || '',
+      entry_order_supplier_code: entryProduct?.supplier?.supplier_code || '',
+      entry_order_supplier_name: entryProduct?.supplier?.company_name || entryProduct?.supplier?.name || '',
       entry_order_customer_code: entryCustomerCode,
       entry_order_customer_name: entryCustomerName,
 
       // Dispatch Order Information
       dispatch_order_number: depOrder?.departure_order_no || '',
       dispatch_order_date: depOrder?.departure_date_time ? new Date(depOrder.departure_date_time).toISOString().split('T')[0] : '',
-      dispatch_order_guia: depOrder?.guia_remision || '',
-      dispatch_order_transport_guia: depOrder?.transport_company_guide || '',
+      dispatch_document_number: depOrder?.dispatch_document_number || '',
       dispatch_order_quantity: parseFloat(transaction.allocated_quantity || 0),
+      dispatch_order_packages: parseFloat(transaction.allocated_packages || 0),
+      dispatch_order_weight: parseFloat(transaction.allocated_weight || 0),
       dispatch_order_unit_cost: dispatchUnitCost.toFixed(2),
       dispatch_order_total_cost: dispatchTotalCost.toFixed(2),
-      dispatch_order_currency: depOrder?.currency || 'USD',
-      dispatch_order_customer_code: customerCode,
-      dispatch_order_customer_name: customerName,
-      dispatch_order_customer_address: customerAddress,
+
+      // ✅ NEW: Order Out Customer fields (ADDED - Missing fields #2 and #3)
+      order_out_customer_code: customerCode,
+      order_out_customer_name: customerName,
 
       // TSL Personnel Information
-      order_receiver_from_tsl: entryOrder?.created_by ?
-        `${entryOrder.created_by.first_name || ''} ${entryOrder.created_by.last_name || ''}`.trim() : '',
-      order_dispatcher_from_tsl: depOrder?.approved_by ?
-        `${depOrder.approved_by.first_name || ''} ${depOrder.approved_by.last_name || ''}`.trim() :
-        (depOrder?.created_by ? `${depOrder.created_by.first_name || ''} ${depOrder.created_by.last_name || ''}`.trim() : ''),
+      order_receiver_from_tsl: entryOrder?.creator ?
+        `${entryOrder.creator.first_name || ''} ${entryOrder.creator.last_name || ''}`.trim() : '',
+      order_dispatcher_from_tsl: depOrder?.reviewer ?
+        `${depOrder.reviewer.first_name || ''} ${depOrder.reviewer.last_name || ''}`.trim() :
+        (depOrder?.creator ? `${depOrder.creator.first_name || ''} ${depOrder.creator.last_name || ''}`.trim() : ''),
 
       // Additional Information
-      lot_number: entryProduct?.lot_number || '',
-      expiry_date: entryProduct?.expiry_date ? new Date(entryProduct.expiry_date).toISOString().split('T')[0] : '',
-      warehouse_location: invAllocation?.cell ?
-        `${invAllocation.cell.warehouse?.name || ''} - Row ${invAllocation.cell.row_number}.Bay ${String(invAllocation.cell.bay_number).padStart(2, '0')}.Pos ${String(invAllocation.cell.position_number).padStart(2, '0')}` : '',
-      quality_status: invAllocation?.quality_control_status || '',
-      remarks: depOrder?.remarks || entryOrder?.remarks || '',
-      observations: depOrder?.observations || entryOrder?.observation || '',
+      lot_number: entryProduct?.lot_series || '',
+      expiry_date: entryProduct?.expiration_date ? new Date(entryProduct.expiration_date).toISOString().split('T')[0] : '',
+      manufacturing_date: entryProduct?.manufacturing_date ? new Date(entryProduct.manufacturing_date).toISOString().split('T')[0] : '',
+      remarks: depOrder?.observation || entryOrder?.observation || ''
 
-      // Transaction metadata
-      transaction_type: 'DISPATCHED',
-      entry_to_dispatch_days: entryOrder?.entry_date_time && depOrder?.departure_date_time ?
-        Math.floor((new Date(depOrder.departure_date_time) - new Date(entryOrder.entry_date_time)) / (1000 * 60 * 60 * 24)) : null
+      // ✅ REMOVED: packing_type, warehouse_location, quality_status, transaction_type, entry_to_dispatch_days (5 fields removed)
     };
 
     reportData.push(reportRow);
@@ -425,59 +420,58 @@ async function transformToMasterReport(transactions, unallocatedInventory = []) 
       customer_code: customerCode,
       customer_name: customerName,
       product_code: product?.product_code || '',
-      product_name: product?.product_name || '',
-      product_category: product?.category?.category_name || '',
-      product_subcategory1: product?.subcategory1?.subcategory_name || '',
-      product_subcategory2: product?.subcategory2?.subcategory_name || '',
+      product_name: product?.name || '',
+      product_category: product?.category?.name || '',
+      product_subcategory1: product?.subcategory1?.name || '',
+      product_subcategory2: product?.subcategory2?.name || '',
 
-      // Packaging Information
-      packing_type: getPackagingType(entryProduct?.packaging_type),
-      packing_condition: getPackagingCondition(entryProduct?.packaging_status),
+      // ✅ NEW: Position / Pallet field
+      position_pallet: inventory?.cell ?
+        `${inventory.cell.row}.${String(inventory.cell.bay).padStart(2, '0')}.${String(inventory.cell.position).padStart(2, '0')}` : '',
+
+      // Packaging Information (keeping only packing_condition)
+      packing_condition: getPackagingCondition(inventory?.product_status),
 
       // Entry Order Information
       entry_order_number: entryOrder?.entry_order_no || '',
       entry_order_date: entryOrder?.entry_date_time ? new Date(entryOrder.entry_date_time).toISOString().split('T')[0] : '',
-      entry_order_guia: entryOrder?.guia_remision || '',
-      entry_order_transport_guia: entryOrder?.transport_company_guide || '',
+      entry_order_guide_number: entryProduct?.guide_number || entryOrder?.guide_number || '',
       entry_order_quantity: parseFloat(inventory.inventory_quantity || 0),
+      entry_order_packages: parseFloat(inventory.package_quantity || 0),
+      entry_order_weight: parseFloat(inventory.weight_kg || 0),
       entry_order_unit_cost: entryUnitCost.toFixed(2),
       entry_order_total_cost: entryTotalCost.toFixed(2),
-      entry_order_currency: entryOrder?.currency || 'USD',
-      entry_order_supplier_code: entryOrder?.supplier?.supplier_code || '',
-      entry_order_supplier_name: entryOrder?.supplier?.name || '',
+      entry_order_supplier_code: entryProduct?.supplier?.supplier_code || '',
+      entry_order_supplier_name: entryProduct?.supplier?.company_name || entryProduct?.supplier?.name || '',
       entry_order_customer_code: customerCode,
       entry_order_customer_name: customerName,
 
       // Dispatch Order Information (empty for unallocated)
       dispatch_order_number: '',
       dispatch_order_date: '',
-      dispatch_order_guia: '',
-      dispatch_order_transport_guia: '',
+      dispatch_document_number: '',
       dispatch_order_quantity: 0,
+      dispatch_order_packages: 0,
+      dispatch_order_weight: 0,
       dispatch_order_unit_cost: '0.00',
       dispatch_order_total_cost: '0.00',
-      dispatch_order_currency: '',
-      dispatch_order_customer_code: '',
-      dispatch_order_customer_name: '',
-      dispatch_order_customer_address: '',
+
+      // ✅ NEW: Order Out Customer fields (empty for unallocated)
+      order_out_customer_code: '',
+      order_out_customer_name: '',
 
       // TSL Personnel Information
-      order_receiver_from_tsl: entryOrder?.created_by ?
-        `${entryOrder.created_by.first_name || ''} ${entryOrder.created_by.last_name || ''}`.trim() : '',
+      order_receiver_from_tsl: entryOrder?.creator ?
+        `${entryOrder.creator.first_name || ''} ${entryOrder.creator.last_name || ''}`.trim() : '',
       order_dispatcher_from_tsl: '',
 
       // Additional Information
-      lot_number: entryProduct?.lot_number || '',
-      expiry_date: entryProduct?.expiry_date ? new Date(entryProduct.expiry_date).toISOString().split('T')[0] : '',
-      warehouse_location: inventory?.cell ?
-        `${inventory.cell.warehouse?.name || ''} - Row ${inventory.cell.row_number}.Bay ${String(inventory.cell.bay_number).padStart(2, '0')}.Pos ${String(inventory.cell.position_number).padStart(2, '0')}` : '',
-      quality_status: inventory?.quality_control_status || '',
-      remarks: entryOrder?.remarks || '',
-      observations: entryOrder?.observation || '',
+      lot_number: entryProduct?.lot_series || '',
+      expiry_date: entryProduct?.expiration_date ? new Date(entryProduct.expiration_date).toISOString().split('T')[0] : '',
+      manufacturing_date: entryProduct?.manufacturing_date ? new Date(entryProduct.manufacturing_date).toISOString().split('T')[0] : '',
+      remarks: entryOrder?.observation || ''
 
-      // Transaction metadata
-      transaction_type: 'IN_STOCK',
-      entry_to_dispatch_days: null
+      // ✅ REMOVED: packing_type, warehouse_location, quality_status, transaction_type, entry_to_dispatch_days
     };
 
     reportData.push(reportRow);
@@ -604,9 +598,6 @@ function calculateSummary(reportData) {
     average_days_to_dispatch: 0
   };
 
-  let dispatchDaysSum = 0;
-  let dispatchDaysCount = 0;
-
   for (const row of reportData) {
     summary.total_entry_quantity += parseFloat(row.entry_order_quantity || 0);
     summary.total_dispatch_quantity += parseFloat(row.dispatch_order_quantity || 0);
@@ -616,18 +607,11 @@ function calculateSummary(reportData) {
     if (row.product_code) summary.unique_products.add(row.product_code);
     if (row.customer_code) summary.unique_customers.add(row.customer_code);
     if (row.entry_order_supplier_code) summary.unique_suppliers.add(row.entry_order_supplier_code);
-
-    if (row.entry_to_dispatch_days !== null && row.entry_to_dispatch_days >= 0) {
-      dispatchDaysSum += row.entry_to_dispatch_days;
-      dispatchDaysCount++;
-    }
   }
 
   summary.unique_products = summary.unique_products.size;
   summary.unique_customers = summary.unique_customers.size;
   summary.unique_suppliers = summary.unique_suppliers.size;
-  summary.average_days_to_dispatch = dispatchDaysCount > 0 ?
-    (dispatchDaysSum / dispatchDaysCount).toFixed(1) : 0;
 
   summary.total_entry_value = summary.total_entry_value.toFixed(2);
   summary.total_dispatch_value = summary.total_dispatch_value.toFixed(2);
@@ -636,32 +620,22 @@ function calculateSummary(reportData) {
 }
 
 /**
- * Helper function to map packaging type
- */
-function getPackagingType(type) {
-  const packagingTypes = {
-    'PALET': 'Pallet',
-    'BOX': 'Box',
-    'SACK': 'Sack',
-    'UNIT': 'Unit',
-    'PACK': 'Pack',
-    'BARRELS': 'Barrels',
-    'BUNDLE': 'Bundle',
-    'OTHER': 'Other'
-  };
-  return packagingTypes[type] || type || '';
-}
-
-/**
- * Helper function to map packaging condition
+ * Helper function to map packaging condition based on ProductStatus enum
+ * ProductStatus values: PAL_NORMAL, CAJ_NORMAL, etc. (30-37 normal, 40-47 damaged)
  */
 function getPackagingCondition(status) {
-  const packagingStatus = {
-    'NORMAL': 'Normal',
-    'PARTIALLY_DAMAGED': 'Partially Damaged',
-    'DAMAGED': 'Damaged'
-  };
-  return packagingStatus[status] || status || '';
+  if (!status) return '';
+
+  // Check if it's a normal status (contains NORMAL)
+  if (status.includes('NORMAL')) {
+    return 'Normal';
+  }
+  // Check if it's a damaged status (contains DANADA or DANADO)
+  if (status.includes('DANADA') || status.includes('DANADO')) {
+    return 'Dañado'; // Spanish for damaged
+  }
+
+  return status || '';
 }
 
 module.exports = {
