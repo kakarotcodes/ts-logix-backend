@@ -1,5 +1,6 @@
 const entryService = require("./entry.service");
 const bulkEntryService = require("./bulk-entry.service");
+const emailService = require("../../utils/emailService");
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
@@ -302,13 +303,87 @@ async function createEntryOrder(req, res) {
           health_registration: p.health_registration
         }))
       },
-      { 
-        operation_type: 'ENTRY_ORDER_MANAGEMENT', 
+      {
+        operation_type: 'ENTRY_ORDER_MANAGEMENT',
         action_type: 'CREATE_SUCCESS',
         business_impact: 'NEW_INVENTORY_EXPECTED',
         next_steps: 'AWAITING_ADMIN_REVIEW'
       }
     );
+
+    // ✅ Send email notification to warehouse incharge about new entry order
+    try {
+      // Fetch client data for email notification
+      const clientData = await prisma.client.findUnique({
+        where: { client_id: entryData.client_id }
+      });
+
+      // Get warehouse incharge emails (users with WAREHOUSE_INCHARGE role)
+      const warehouseUsers = await prisma.user.findMany({
+        where: {
+          role: 'WAREHOUSE_INCHARGE',
+          organisation_id: entryData.organisation_id
+        },
+        select: { email: true }
+      });
+
+      const warehouseEmails = warehouseUsers.map(user => user.email).filter(Boolean);
+
+      if (clientData && warehouseEmails.length > 0) {
+        // Get main supplier name from products
+        const supplierName = result.products?.[0]?.supplier?.company_name || 'N/A';
+
+        const entryOrderData = {
+          entry_order_no: result.entryOrder.entry_order_no,
+          entry_order_id: result.entryOrder.entry_order_id,
+          registration_date: result.entryOrder.registration_date,
+          document_date: result.entryOrder.document_date,
+          supplier_name: supplierName,
+          total_products: result.products?.length || 0,
+          total_quantity: result.products?.reduce((sum, p) => sum + (p.inventory_quantity || 0), 0) || 0,
+          total_weight: result.entryOrder.total_weight || 0,
+          observations: result.entryOrder.observation
+        };
+
+        console.log(`📧 Sending warehouse alert email to ${warehouseEmails.length} warehouse staff for new entry order ${result.entryOrder.entry_order_no}`);
+
+        const emailResult = await emailService.sendWarehouseEntryOrderAlert(
+          entryOrderData,
+          clientData,
+          warehouseEmails
+        );
+
+        if (emailResult.success) {
+          console.log(`✅ Warehouse alert emails sent successfully to ${emailResult.emailCount} recipients`);
+        } else {
+          console.log(`⚠️ Warehouse alert email failed: ${emailResult.error}`);
+        }
+      } else {
+        if (!clientData) {
+          console.log(`⚠️ No client data found for client_id: ${entryData.client_id}`);
+        }
+        if (warehouseEmails.length === 0) {
+          console.log(`⚠️ No warehouse incharge emails found for organisation`);
+        }
+      }
+    } catch (emailError) {
+      // Log email error but don't fail the request
+      console.error('❌ Error sending warehouse alert email:', emailError);
+      await req.logEvent(
+        'EMAIL_NOTIFICATION_FAILED',
+        'EntryOrder',
+        result.entryOrder.entry_order_id,
+        `Failed to send warehouse alert email for new entry order ${result.entryOrder.entry_order_no}`,
+        null,
+        {
+          entry_order_id: result.entryOrder.entry_order_id,
+          entry_order_no: result.entryOrder.entry_order_no,
+          client_id: entryData.client_id,
+          error_message: emailError.message
+        },
+        { operation_type: 'EMAIL_NOTIFICATION', action_type: 'WAREHOUSE_ALERT_FAILED' }
+      );
+    }
 
     // ✅ NEW: If files are uploaded, process document uploads
     if (files && files.length > 0 && result.entryOrder) {
@@ -739,18 +814,76 @@ async function reviewEntryOrder(req, res) {
         warehouse_id: result.warehouse_id,
         supplier_id: result.supplier_id,
         entry_date_time: result.entry_date_time,
-        business_impact: review_status === 'APPROVED' ? 'READY_FOR_INVENTORY_ALLOCATION' : 
+        business_impact: review_status === 'APPROVED' ? 'READY_FOR_INVENTORY_ALLOCATION' :
                         review_status === 'REJECTED' ? 'ORDER_BLOCKED' : 'REQUIRES_CLIENT_REVISION'
       },
-      { 
-        operation_type: 'ENTRY_ORDER_MANAGEMENT', 
+      {
+        operation_type: 'ENTRY_ORDER_MANAGEMENT',
         action_type: 'REVIEW_COMPLETED',
-        business_impact: review_status === 'APPROVED' ? 'INVENTORY_ALLOCATION_ENABLED' : 
+        business_impact: review_status === 'APPROVED' ? 'INVENTORY_ALLOCATION_ENABLED' :
                         review_status === 'REJECTED' ? 'ORDER_WORKFLOW_STOPPED' : 'CLIENT_ACTION_REQUIRED',
-        next_steps: review_status === 'APPROVED' ? 'WAREHOUSE_CAN_ALLOCATE_INVENTORY' : 
+        next_steps: review_status === 'APPROVED' ? 'WAREHOUSE_CAN_ALLOCATE_INVENTORY' :
                    review_status === 'REJECTED' ? 'ORDER_WORKFLOW_ENDED' : 'CLIENT_MUST_REVISE_ORDER'
       }
     );
+
+    // ✅ Send email notification to client about the order status change
+    try {
+      // Fetch client data for email notification
+      const clientData = await prisma.client.findUnique({
+        where: { client_id: result.client_id }
+      });
+
+      // Fetch reviewer data
+      const reviewerData = await prisma.user.findUnique({
+        where: { id: reviewerId },
+        select: { first_name: true, last_name: true, email: true }
+      });
+
+      if (clientData && clientData.email) {
+        const entryOrderData = {
+          entry_order_no: result.entry_order_no,
+          entry_order_id: result.entry_order_id,
+          registration_date: result.registration_date
+        };
+
+        console.log(`📧 Sending entry order notification email to ${clientData.email} for order ${result.entry_order_no} (${review_status})`);
+
+        const emailResult = await emailService.sendEntryOrderNotification(
+          entryOrderData,
+          clientData,
+          review_status,
+          review_comments,
+          reviewerData
+        );
+
+        if (emailResult.success) {
+          console.log(`✅ Email notification sent successfully to ${clientData.email}`);
+        } else {
+          console.log(`⚠️ Email notification failed: ${emailResult.error}`);
+        }
+      } else {
+        console.log(`⚠️ No client email found for client_id: ${result.client_id}`);
+      }
+    } catch (emailError) {
+      // Log email error but don't fail the request
+      console.error('❌ Error sending email notification:', emailError);
+      await req.logEvent(
+        'EMAIL_NOTIFICATION_FAILED',
+        'EntryOrder',
+        result.entry_order_id,
+        `Failed to send email notification for entry order ${orderNo} review`,
+        null,
+        {
+          entry_order_id: result.entry_order_id,
+          entry_order_no: result.entry_order_no,
+          review_status: review_status,
+          client_id: result.client_id,
+          error_message: emailError.message
+        },
+        { operation_type: 'EMAIL_NOTIFICATION', action_type: 'EMAIL_FAILED' }
+      );
+    }
 
     return res.status(200).json({
       success: true,

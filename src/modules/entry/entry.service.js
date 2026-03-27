@@ -214,7 +214,9 @@ async function getAllEntryOrders(
 
   const orders = await prisma.entryOrder.findMany({
     where: whereConds,
-    orderBy: { registration_date: "desc" },
+    orderBy: [
+      { order: { created_at: "desc" } }
+    ],
     select: {
       entry_order_id: true,
       entry_order_no: true,
@@ -649,14 +651,16 @@ async function getEntryFormFields(userRole = null, userId = null) {
   }));
 
   const orderStatusOptions = Object.values({
-    REVISION: "Revisión",
-    PRESENTACION: "Presentación",
-    FINALIZACION: "Finalización",
+    PENDIENTE: "Pendiente",
+    APROBADO: "Aprobado",
+    RECIBIDO: "Recibido",
+    TERMINADO: "Terminado",
   }).map((label, index) => ({
     value: Object.keys({
-      REVISION: "Revisión",
-      PRESENTACION: "Presentación",
-      FINALIZACION: "Finalización",
+      PENDIENTE: "Pendiente",
+      APROBADO: "Aprobado",
+      RECIBIDO: "Recibido",
+      TERMINADO: "Terminado",
     })[index],
     label,
   }));

@@ -65,6 +65,9 @@ router.route('/:id')
   .put(productController.updateProduct)
   .delete(productController.deleteProduct);
 
+// ✅ NEW: Upload documents to existing product
+router.post('/:id/documents', upload.array('uploaded_documents', 10), productController.uploadProductDocuments);
+
 module.exports = router;
 
 

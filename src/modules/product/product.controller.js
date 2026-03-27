@@ -1130,6 +1130,167 @@ async function processBulkUpload(req, res) {
   }
 }
 
+/**
+ * Upload documents for an existing product
+ */
+async function uploadProductDocuments(req, res) {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id;
+    const files = req.files;
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No files uploaded'
+      });
+    }
+
+    console.log(`📎 Uploading ${files.length} documents for product ${id}`);
+
+    // ✅ LOG: Document upload process started
+    await req.logEvent(
+      'PRODUCT_UPDATED',
+      'Product',
+      id,
+      `Started uploading ${files.length} documents for product ${id}`,
+      null,
+      {
+        product_id: id,
+        file_count: files.length,
+        uploaded_by: userId,
+        upload_timestamp: new Date().toISOString()
+      },
+      { operation_type: 'PRODUCT_MANAGEMENT', action_type: 'DOCUMENT_UPLOAD_START' }
+    );
+
+    // Verify product exists
+    const { PrismaClient } = require("@prisma/client");
+    const prisma = new PrismaClient();
+
+    const product = await prisma.product.findUnique({
+      where: { product_id: id }
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        error: 'Product not found'
+      });
+    }
+
+    const { uploadDocument, validateFile } = require("../../utils/supabase");
+
+    const uploadResults = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const documentType = 'OTRO'; // Default document type
+
+      // Validate file
+      const validation = validateFile(file.originalname, file.size);
+      if (!validation.valid) {
+        uploadResults.push({
+          filename: file.originalname,
+          success: false,
+          error: validation.error
+        });
+        continue;
+      }
+
+      // Upload to Supabase
+      const uploadResult = await uploadDocument(
+        file.buffer,
+        file.originalname,
+        'product',
+        id,
+        documentType,
+        userId
+      );
+
+      uploadResults.push({
+        filename: file.originalname,
+        ...uploadResult
+      });
+    }
+
+    // Update product with document information
+    const successfulUploads = uploadResults.filter(r => r.success);
+
+    if (successfulUploads.length > 0) {
+      const documentMetadata = successfulUploads.map(upload => ({
+        file_name: upload.file_name,
+        file_path: upload.file_path,
+        public_url: upload.public_url,
+        document_type: upload.document_type,
+        uploaded_by: upload.uploaded_by,
+        uploaded_at: upload.uploaded_at,
+        file_size: upload.file_size,
+        content_type: upload.content_type
+      }));
+
+      // Get existing documents and append new ones
+      const existingDocuments = product.uploaded_documents || [];
+      const updatedDocuments = Array.isArray(existingDocuments)
+        ? [...existingDocuments, ...documentMetadata]
+        : [...documentMetadata];
+
+      // Update product with documents
+      await prisma.product.update({
+        where: { product_id: id },
+        data: {
+          uploaded_documents: updatedDocuments
+        }
+      });
+
+      // Log document upload activity
+      await req.logEvent(
+        'PRODUCT_UPDATED',
+        'Product',
+        id,
+        `Uploaded ${successfulUploads.length} documents for product ${product.name}`,
+        null,
+        {
+          product_id: id,
+          product_name: product.name,
+          product_code: product.product_code,
+          documents_uploaded: successfulUploads.length,
+          document_types: documentMetadata.map(d => d.document_type),
+          uploaded_by: userId
+        },
+        { operation_type: 'PRODUCT_MANAGEMENT', action_type: 'DOCUMENT_UPLOAD_SUCCESS' }
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully uploaded ${successfulUploads.length} out of ${files.length} documents`,
+      data: {
+        total_files: files.length,
+        successful_uploads: successfulUploads.length,
+        failed_uploads: uploadResults.filter(r => !r.success).length,
+        upload_details: uploadResults
+      }
+    });
+  } catch (error) {
+    console.error('Error uploading product documents:', error);
+
+    // ✅ LOG: Document upload failure
+    await req.logError(error, {
+      controller: 'product',
+      action: 'uploadProductDocuments',
+      product_id: req.params.id,
+      user_id: req.user?.id,
+      error_context: 'PRODUCT_DOCUMENT_UPLOAD_FAILED'
+    });
+
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   createProduct,
   getAllProducts,
@@ -1148,6 +1309,9 @@ module.exports = {
   // ✅ NEW: Bulk upload controllers
   getBulkUploadTemplate,
   processBulkUpload,
+
+  // ✅ NEW: Document upload controller
+  uploadProductDocuments,
 
   // ✅ DEPRECATED: Keep old controllers for backward compatibility
   getTemperatureRanges,

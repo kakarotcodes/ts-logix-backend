@@ -1398,6 +1398,66 @@ async function createComprehensiveDepartureOrder(req, res) {
     // Call service to create comprehensive departure order
     const result = await departureService.createComprehensiveDepartureOrder(req.body);
 
+    // ✅ Send email notification to warehouse incharge about new departure order
+    try {
+      const emailService = require("../../utils/emailService");
+      const prisma = require("../../db");
+
+      // Fetch client data for email notification
+      const clientData = await prisma.client.findUnique({
+        where: { client_id: req.body.client_id }
+      });
+
+      // Get warehouse incharge emails (users with WAREHOUSE_INCHARGE role)
+      const warehouseUsers = await prisma.user.findMany({
+        where: {
+          role: 'WAREHOUSE_INCHARGE',
+          organisation_id: organisationId
+        },
+        select: { email: true }
+      });
+
+      const warehouseEmails = warehouseUsers.map(user => user.email).filter(Boolean);
+
+      if (clientData && warehouseEmails.length > 0) {
+        const departureOrderData = {
+          departure_order_no: result.departure_order_no || result.departure_order_code,
+          departure_order_id: result.departure_order_id,
+          created_at: result.created_at || new Date(),
+          destination: result.destination_point || result.arrival_point,
+          transport_type: result.transport_type,
+          total_products: result.products?.length || 0,
+          total_quantity: result.comprehensive_summary?.total_quantity || 0,
+          total_weight: result.comprehensive_summary?.total_weight || result.total_weight || 0,
+          observations: result.observations || result.observation
+        };
+
+        console.log(`📧 Sending warehouse alert email to ${warehouseEmails.length} warehouse staff for new departure order ${departureOrderData.departure_order_no}`);
+
+        const emailResult = await emailService.sendWarehouseDispatchOrderAlert(
+          departureOrderData,
+          clientData,
+          warehouseEmails
+        );
+
+        if (emailResult.success) {
+          console.log(`✅ Warehouse alert emails sent successfully to ${emailResult.emailCount} recipients`);
+        } else {
+          console.log(`⚠️ Warehouse alert email failed: ${emailResult.error}`);
+        }
+      } else {
+        if (!clientData) {
+          console.log(`⚠️ No client data found for client_id: ${req.body.client_id}`);
+        }
+        if (warehouseEmails.length === 0) {
+          console.log(`⚠️ No warehouse incharge emails found for organisation`);
+        }
+      }
+    } catch (emailError) {
+      // Log email error but don't fail the request
+      console.error('❌ Error sending warehouse alert email for departure order:', emailError);
+    }
+
     // Success response
     res.status(201).json({
       success: true,

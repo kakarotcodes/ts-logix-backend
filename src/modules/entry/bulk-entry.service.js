@@ -723,7 +723,7 @@ async function processOrdersInBatches(orderHeaders, orderProducts, userId, userR
         registration_date: orderHeader.registration_date,
         document_date: orderHeader.document_date,
         entry_date_time: orderHeader.entry_date_time,
-        order_status: orderHeader.order_status || 'REVISION',
+        order_status: orderHeader.order_status || 'PENDIENTE',
         total_volume: totalVolume,
         total_weight: totalWeight,
         cif_value: orderHeader.cif_value,
