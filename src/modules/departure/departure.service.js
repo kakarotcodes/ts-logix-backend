@@ -2701,9 +2701,12 @@ async function createComprehensiveDepartureOrder(comprehensiveData) {
     };
 
     // ✅ OPTIMIZED: Batch validate customer/client in single query
+    // ✅ FIXED: Only require client_id/customer_id for CLIENT role
+    const userRole = comprehensiveData.user_role;
+
     if (comprehensiveData.client_id || comprehensiveData.customer_id) {
       const validationQueries = [];
-      
+
       if (comprehensiveData.client_id) {
         validationQueries.push(
           tx.client.findUnique({
@@ -2712,7 +2715,7 @@ async function createComprehensiveDepartureOrder(comprehensiveData) {
           })
         );
       }
-      
+
       if (comprehensiveData.customer_id) {
         validationQueries.push(
           tx.customer.findUnique({
@@ -2721,10 +2724,10 @@ async function createComprehensiveDepartureOrder(comprehensiveData) {
           })
         );
       }
-      
+
       // Execute validation queries in parallel
       const validationResults = await Promise.all(validationQueries);
-      
+
       // Check results and set appropriate ID
       if (comprehensiveData.client_id) {
         const client = validationResults[0];
@@ -2740,7 +2743,13 @@ async function createComprehensiveDepartureOrder(comprehensiveData) {
         departureOrderData.customer_id = comprehensiveData.customer_id;
       }
     } else {
-      throw new Error("Either client_id or customer_id must be provided");
+      // ✅ FIXED: Only enforce client_id/customer_id requirement for CLIENT role
+      // WAREHOUSE_INCHARGE and ADMIN can create orders without specifying client/customer
+      if (userRole === 'CLIENT') {
+        throw new Error("client_id is required for CLIENT role users");
+      }
+      // For WAREHOUSE_INCHARGE and ADMIN, client_id and customer_id are optional
+      // The order will be tracked via created_by and organisation_id
     }
 
     const newDepartureOrder = await tx.departureOrder.create({

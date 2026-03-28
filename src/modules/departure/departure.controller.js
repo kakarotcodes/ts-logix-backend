@@ -1396,7 +1396,11 @@ async function createComprehensiveDepartureOrder(req, res) {
     }
 
     // Call service to create comprehensive departure order
-    const result = await departureService.createComprehensiveDepartureOrder(req.body);
+    // Pass user role to service for role-based validation
+    const result = await departureService.createComprehensiveDepartureOrder({
+      ...req.body,
+      user_role: userRole
+    });
 
     // ✅ Send email notification to warehouse incharge about new departure order
     try {
