@@ -2360,6 +2360,7 @@ async function processInventoryDispatch(departureOrderId, validatedCells, userId
           cell_id: cell.cell_id,
           product_status: cell.product_status || "PAL_NORMAL",
           status_code: cell.status_code || 37,
+          quality_status: cell.quality_status, // ✅ NEW: Capture quality status at time of departure
           notes: `DISPATCH: ${cell.requested_qty} units (${requestedPackageQty} packages, ${cell.requested_weight} kg) of ${cell.product_code} (${cell.product_name}) | ` +
                  `Lot: ${cell.lot_series} | Entry Order: ${cell.entry_order_no} | ` +
                  `Expiry: ${cell.expiration_date} | Position: ${cell.cell_reference} | ` +

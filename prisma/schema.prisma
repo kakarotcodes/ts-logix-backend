@@ -1373,7 +1373,10 @@ model InventoryLog {
   // Product status
   product_status            ProductStatus?
   status_code               Int?
-  
+
+  // ✅ NEW: Quality status at the time of this log entry (for historical tracking)
+  quality_status            QualityControlStatus?
+
   notes                     String?
   
   // Relations

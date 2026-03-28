@@ -546,6 +546,7 @@ async function assignProductToCell(assignmentData) {
         cell_id,
         product_status: productStatusEnum,
         status_code: statusCode,
+        quality_status: allocation.quality_status, // ✅ NEW: Capture quality status at time of entry
         notes: `Assigned ${inventory_quantity} units (${package_quantity} packages, ${parseFloat(weight_kg).toFixed(2)} kg) of ${entryOrderProduct.product.product_code} to quarantine in cell ${cellRef}`,
       },
     });
@@ -887,814 +888,326 @@ async function getClientAssignedCells(warehouseId, userId) {
 }
 
 /**
- * ✅ ENHANCED: Get comprehensive inventory summary including current inventory + dispatch history
+ * ✅ REFACTORED: Lean paginated inventory movement logs endpoint
+ * Optimized for inventory movement/history table UI
+ * Returns only the necessary fields for display with proper pagination
  */
-async function getInventorySummary(filters = {}) {
-  const { 
-    warehouse_id, 
-    product_id, 
-    product_name, 
+async function getInventoryMovementLogs(filters = {}) {
+  const {
+    warehouse_id,
+    product_id,
+    product_name,
     product_code,
     client_name,
-    status, 
-    include_logs = true, 
-    include_dispatch_history = true 
+    movement_type,
+    date_from,
+    date_to,
+    page = 1,
+    page_size = 10 // ✅ Changed from 50 to 10 for better UI display
   } = filters;
 
-  // ✅ SECTION 1: CURRENT INVENTORY (existing functionality)
-  const inventoryWhere = {};
-  if (warehouse_id) inventoryWhere.warehouse_id = warehouse_id;
-  if (product_id) inventoryWhere.product_id = product_id;
-  if (status) inventoryWhere.status = status;
-  
-  // ✅ NEW: Product search filters
+  // Build where clause for filtering
+  const where = {};
+
+  // Filter by movement type
+  if (movement_type) {
+    where.movement_type = movement_type;
+  }
+
+  // Filter by warehouse
+  if (warehouse_id) {
+    where.warehouse_id = warehouse_id;
+  }
+
+  // Filter by product ID
+  if (product_id) {
+    where.product_id = product_id;
+  }
+
+  // Filter by product name or code
   if (product_name || product_code) {
-    inventoryWhere.product = {};
+    where.product = {};
     if (product_name) {
-      inventoryWhere.product.name = {
+      where.product.name = {
         contains: product_name,
         mode: 'insensitive'
       };
     }
     if (product_code) {
-      inventoryWhere.product.product_code = {
+      where.product.product_code = {
         contains: product_code,
         mode: 'insensitive'
       };
     }
   }
-  
-  // ✅ NEW: Client search filter (search through allocation -> entry_order -> creator)
+
+  // Filter by client name (through entry_order -> creator -> client)
   if (client_name) {
-    inventoryWhere.allocation = {
-      entry_order: {
-        creator: {
-          OR: [
-            {
-              clientUserAccounts: {
-                some: {
-                  client: {
-                    OR: [
-                      {
-                        company_name: {
-                          contains: client_name,
-                          mode: 'insensitive'
-                        }
-                      },
-                      {
-                        first_names: {
-                          contains: client_name,
-                          mode: 'insensitive'
-                        }
-                      },
-                      {
-                        last_name: {
-                          contains: client_name,
-                          mode: 'insensitive'
-                        }
-                      }
-                    ]
-                  }
+    where.OR = [
+      // Search through entry order creator
+      {
+        entry_order: {
+          creator: {
+            OR: [
+              {
+                first_name: {
+                  contains: client_name,
+                  mode: 'insensitive'
+                }
+              },
+              {
+                last_name: {
+                  contains: client_name,
+                  mode: 'insensitive'
                 }
               }
-            },
-            {
-              first_name: {
-                contains: client_name,
-                mode: 'insensitive'
+            ]
+          }
+        }
+      },
+      // Search through departure order client
+      {
+        departure_order: {
+          client: {
+            OR: [
+              {
+                company_name: {
+                  contains: client_name,
+                  mode: 'insensitive'
+                }
+              },
+              {
+                first_names: {
+                  contains: client_name,
+                  mode: 'insensitive'
+                }
+              },
+              {
+                last_name: {
+                  contains: client_name,
+                  mode: 'insensitive'
+                }
               }
-            },
-            {
-              last_name: {
-                contains: client_name,
-                mode: 'insensitive'
-              }
-            }
-          ]
+            ]
+          }
         }
       }
-    };
+    ];
   }
 
-  const currentInventory = await prisma.inventory.findMany({
-    where: inventoryWhere,
-    select: {
-      inventory_id: true,
-      current_quantity: true,
-      current_package_quantity: true,
-      current_weight: true,
-      current_volume: true,
-      status: true,
-      product_status: true,
-      status_code: true,
-      created_at: true,
-      last_updated: true,
+  // Filter by date range
+  if (date_from || date_to) {
+    where.timestamp = {};
+    if (date_from) {
+      where.timestamp.gte = new Date(date_from);
+    }
+    if (date_to) {
+      where.timestamp.lte = new Date(date_to);
+    }
+  }
 
+  // Calculate pagination
+  const skip = (page - 1) * page_size;
+  const take = parseInt(page_size);
+
+  // Get total count for pagination
+  const total = await prisma.inventoryLog.count({ where });
+
+  // Fetch paginated logs with minimal necessary data
+  const logs = await prisma.inventoryLog.findMany({
+    where,
+    include: {
+      // Product info
       product: {
         select: {
-          product_id: true,
           product_code: true,
-          name: true,
-          manufacturer: true,
-        },
+          name: true
+        }
       },
 
-      cell: {
-        select: {
-          id: true,
-          row: true,
-          bay: true,
-          position: true,
-        },
-      },
-
+      // Warehouse info
       warehouse: {
         select: {
-          warehouse_id: true,
-          name: true,
-        },
+          name: true
+        }
       },
 
+      // Cell info
+      cell: {
+        select: {
+          row: true,
+          bay: true,
+          position: true
+        }
+      },
+
+      // Quality status from allocation
       allocation: {
         select: {
-          allocation_id: true,
-          guide_number: true,
-          observations: true,
-          allocated_at: true,
           quality_status: true,
-
+          inventory_quantity: true,
+          weight_kg: true,
           entry_order: {
             select: {
-              entry_order_id: true,
               entry_order_no: true,
-              registration_date: true,
-              
-              // Include creator (user) information
+              order_status: true,
               creator: {
                 select: {
-                  id: true,
                   first_name: true,
                   last_name: true,
-                  middle_name: true,
-                  email: true,
-                  role: {
+                  clientUserAccounts: {
+                    where: { is_active: true },
                     select: {
-                      name: true
-                    }
-                  },
-                  organisation: {
-                    select: {
-                      name: true,
-                      address: true
-                    }
-                  }
-                }
-              },
-              
-              // Include reviewer information
-              reviewer: {
-                select: {
-                  id: true,
-                  first_name: true,
-                  last_name: true,
-                  middle_name: true,
-                  email: true,
-                  role: {
-                    select: {
-                      name: true
-                    }
+                      client: {
+                        select: {
+                          company_name: true,
+                          first_names: true,
+                          last_name: true
+                        }
+                      }
+                    },
+                    take: 1
                   }
                 }
               }
-            },
-          },
+            }
+          }
+        }
+      },
 
-          entry_order_product: {
+      // Entry order info
+      entry_order: {
+        select: {
+          entry_order_no: true,
+          order_status: true
+        }
+      },
+
+      // Departure order info
+      departure_order: {
+        select: {
+          departure_order_no: true,
+          order_status: true,
+          client: {
             select: {
-              lot_series: true,
-              manufacturing_date: true,
-              expiration_date: true,
-            },
-          },
-
-          // ✅ Include departure allocations to get departure order info
-          departureAllocations: {
-            select: {
-              allocation_id: true,
-              allocated_quantity: true,
-              departure_order: {
-                select: {
-                  departure_order_no: true,
-                  departure_date_time: true,
-                  order_status: true,
-                  destination_point: true,
-                  carrier_name: true,
-                  customer: {
-                    select: {
-                      name: true,
-                    }
-                  }
-                }
-              }
+              company_name: true,
+              first_names: true,
+              last_name: true
             }
-          },
-        },
-      },
+          }
+        }
+      }
     },
-    orderBy: [
-      { warehouse: { name: "asc" } },
-      { product: { product_code: "asc" } },
-      { cell: { row: "asc" } },
-      { cell: { bay: "asc" } },
-      { cell: { position: "asc" } },
-    ],
-  });
-
-  // ✅ SECTION 2: DISPATCH HISTORY (what you requested)
-  let dispatchHistory = [];
-  let completedDepartureOrders = [];
-  
-  if (include_dispatch_history === true || include_dispatch_history === 'true') {
-    // Get historical dispatch records from inventory logs
-    const dispatchLogsWhere = {
-      movement_type: 'DEPARTURE',
-      departure_order_id: { not: null },
-    };
-    if (warehouse_id) dispatchLogsWhere.warehouse_id = warehouse_id;
-    if (product_id) dispatchLogsWhere.product_id = product_id;
-
-    const dispatchLogs = await prisma.inventoryLog.findMany({
-      where: dispatchLogsWhere,
-      select: {
-        log_id: true,
-        timestamp: true,
-        movement_type: true,
-        quantity_change: true,
-        package_change: true,
-        weight_change: true,
-        volume_change: true,
-        notes: true,
-        
-        // Product info
-        product_id: true,
-        product: {
-          select: {
-            product_id: true,
-            product_code: true,
-            name: true,
-            manufacturer: true,
-          }
-        },
-        
-        // Location info
-        warehouse_id: true,
-        cell_id: true,
-        warehouse: {
-          select: {
-            warehouse_id: true,
-            name: true,
-          }
-        },
-        cell: {
-          select: {
-            id: true,
-            row: true,
-            bay: true,
-            position: true,
-          }
-        },
-        
-        // Departure order info
-        departure_order_id: true,
-        departure_order_product_id: true,
-        departure_order: {
-          select: {
-            departure_order_id: true,
-            departure_order_no: true,
-            departure_date_time: true,
-            order_status: true,
-            dispatch_status: true,
-            destination_point: true,
-            transport_type: true,
-            carrier_name: true,
-            dispatched_at: true,
-            dispatched_by: true,
-            customer: {
-              select: {
-                name: true,
-              }
-            },
-            client: {
-              select: {
-                company_name: true,
-                first_names: true,
-                last_name: true,
-              }
-            },
-            dispatcher: {
-              select: {
-                first_name: true,
-                last_name: true,
-              }
-            }
-          }
-        },
-        
-        // User who performed dispatch
-        user_id: true,
-        user: {
-          select: {
-            first_name: true,
-            last_name: true,
-          }
-        }
-      },
-      orderBy: { timestamp: 'desc' },
-      take: 1000, // Limit for performance
-    });
-
-    // Transform dispatch logs into readable format
-    dispatchHistory = dispatchLogs.map(log => ({
-      ...log,
-      cell_reference: log.cell ? `${log.cell.row}.${String(log.cell.bay).padStart(2, '0')}.${String(log.cell.position).padStart(2, '0')}` : 'Unknown',
-      dispatched_quantity: Math.abs(log.quantity_change || 0),
-      dispatched_weight: Math.abs(log.weight_change || 0),
-      dispatched_by_name: log.user ? `${log.user.first_name || ''} ${log.user.last_name || ''}`.trim() : 'Unknown',
-      dispatcher_name: log.departure_order?.dispatcher ? `${log.departure_order.dispatcher.first_name || ''} ${log.departure_order.dispatcher.last_name || ''}`.trim() : 'Unknown',
-      customer_name: log.departure_order?.customer?.name || 'Unknown',
-      client_name: log.departure_order?.client ? 
-        `${log.departure_order.client.company_name || ''} ${log.departure_order.client.first_names || ''} ${log.departure_order.client.last_name || ''}`.trim() : 
-        'Unknown',
-    }));
-
-    // Get completed departure orders summary
-    const departureOrdersWhere = {
-      order_status: { in: ['COMPLETED'] }, // Removed 'PARTIALLY_DISPATCHED'
-      dispatch_status: { in: ['DISPATCHED', 'PARTIALLY_DISPATCHED'] },
-    };
-    if (warehouse_id) {
-      departureOrdersWhere.warehouse_id = warehouse_id;
-    }
-
-    completedDepartureOrders = await prisma.departureOrder.findMany({
-      where: departureOrdersWhere,
-      select: {
-        departure_order_id: true,
-        departure_order_no: true,
-        order_status: true,
-        dispatch_status: true,
-        registration_date: true,
-        departure_date_time: true,
-        dispatched_at: true,
-        destination_point: true,
-        transport_type: true,
-        carrier_name: true,
-        total_weight: true,
-        total_volume: true,
-        total_pallets: true,
-        
-        customer: {
-          select: {
-            name: true,
-          }
-        },
-        client: {
-          select: {
-            company_name: true,
-            first_names: true,
-            last_name: true,
-          }
-        },
-        warehouse: {
-          select: {
-            warehouse_id: true,
-            name: true,
-          }
-        },
-        dispatcher: {
-          select: {
-            first_name: true,
-            last_name: true,
-          }
-        },
-        
-        // Include products that were dispatched
-        products: {
-          select: {
-            departure_order_product_id: true,
-            product_code: true,
-            requested_quantity: true,
-            requested_packages: true,
-            requested_weight: true,
-            requested_pallets: true,
-            presentation: true,
-            requested_volume: true,
-            unit_price: true,
-            total_value: true,
-            temperature_requirement: true,
-            special_handling: true,
-            delivery_instructions: true,
-            product: {
-              select: {
-                product_id: true,
-                product_code: true,
-                name: true,
-                manufacturer: true,
-              }
-            }
-          }
-        }
-      },
-      orderBy: { dispatched_at: 'desc' },
-      take: 500, // Limit for performance
-    });
-
-    // Transform completed departure orders
-    completedDepartureOrders = completedDepartureOrders.map(order => ({
-      ...order,
-      dispatcher_name: order.dispatcher ? `${order.dispatcher.first_name || ''} ${order.dispatcher.last_name || ''}`.trim() : 'Unknown',
-      customer_name: order.customer?.name || 'Unknown',
-      client_name: order.client ? 
-        `${order.client.company_name || ''} ${order.client.first_names || ''} ${order.client.last_name || ''}`.trim() : 
-        'Unknown',
-      total_products: order.products.length,
-      total_requested_quantity: order.products.reduce((sum, p) => sum + (p.requested_quantity || 0), 0),
-      // Note: dispatched and remaining quantities are calculated from departureAllocations, not stored in DepartureOrderProduct
-      total_dispatched_quantity: 0, // Will be calculated from departureAllocations if needed
-      total_remaining_quantity: 0, // Will be calculated from departureAllocations if needed
-      is_fully_dispatched: false, // Will be determined based on departureAllocations
-      is_partially_dispatched: false, // Will be determined based on departureAllocations
-    }));
-  }
-
-  // ✅ SECTION 3: PROCESS CURRENT INVENTORY with movement logs (existing functionality)
-  let processedCurrentInventory = [];
-  
-  if (include_logs === true || include_logs === 'true') {
-    processedCurrentInventory = await Promise.all(
-      currentInventory.map(async (item) => {
-        // Get departure order details from departure allocations
-        let departureOrderDetails = null;
-        if (item.allocation?.departureAllocations && item.allocation.departureAllocations.length > 0) {
-          departureOrderDetails = item.allocation.departureAllocations[0].departure_order;
-        }
-
-        // Get movement logs for this inventory item
-        const rawMovementLogs = await prisma.inventoryLog.findMany({
-          where: {
-            OR: [
-              { product_id: item.product.product_id, cell_id: item.cell.id },
-              { allocation_id: item.allocation?.allocation_id },
-            ],
-          },
-          select: {
-            log_id: true,
-            timestamp: true,
-            movement_type: true,
-            quantity_change: true,
-            package_change: true,
-            weight_change: true,
-            volume_change: true,
-            product_status: true,
-            status_code: true,
-            
-            // Entry order information
-            entry_order_id: true,
-            entry_order_product_id: true,
-            
-            // Departure order information  
-            departure_order_id: true,
-            departure_order_product_id: true,
-            
-            // Departure order details
-            departure_order: {
-              select: {
-                departure_order_id: true,
-                departure_order_no: true,
-                departure_date_time: true,
-                order_status: true,
-                destination_point: true,
-                carrier_name: true,
-                customer: {
-                  select: {
-                    name: true,
-                  }
-                }
-              }
-            },
-            
-            // Entry order details  
-            entry_order: {
-              select: {
-                entry_order_no: true,
-                registration_date: true,
-              }
-            },
-            
-            // User information
-            user_id: true,
-            
-            // Location information (historical)
-            warehouse_id: true,
-            cell_id: true,
-            warehouse: {
-              select: {
-                warehouse_id: true,
-                name: true,
-              }
-            },
-            cell: {
-              select: {
-                id: true,
-                row: true,
-                bay: true,
-                position: true,
-              }
-            },
-          },
-          orderBy: { timestamp: 'desc' },
-          take: 40, // Fetch more to account for potential duplicates before deduplication
-        });
-
-        // ✅ FIX: Deduplicate logs by log_id (the OR condition can match the same record multiple times)
-        const logMap = new Map();
-        rawMovementLogs.forEach(log => {
-          if (!logMap.has(log.log_id)) {
-            logMap.set(log.log_id, log);
-          }
-        });
-        const movementLogs = Array.from(logMap.values())
-          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-          .slice(0, 20); // Limit to last 20 movements after deduplication
-
-        // Calculate movement summary
-        const movementSummary = {
-          total_entries: movementLogs.filter(log => log.movement_type === 'ENTRY').length,
-          total_departures: movementLogs.filter(log => log.movement_type === 'DEPARTURE').length,
-          total_quantity_in: movementLogs.filter(log => log.movement_type === 'ENTRY').reduce((sum, log) => sum + (log.quantity_change || 0), 0),
-          total_quantity_out: Math.abs(movementLogs.filter(log => log.movement_type === 'DEPARTURE').reduce((sum, log) => sum + (log.quantity_change || 0), 0)),
-          last_entry: movementLogs.find(log => log.movement_type === 'ENTRY')?.timestamp,
-          last_departure: movementLogs.find(log => log.movement_type === 'DEPARTURE')?.timestamp,
-        };
-
-        // Get client information if the entry order creator is a CLIENT
-        let clientInfo = null;
-        if (item.allocation?.entry_order?.creator?.role?.name === 'CLIENT') {
-          try {
-            // Use the new ClientUser relationship
-            const clientUser = await prisma.clientUser.findFirst({
-              where: {
-                user_id: item.allocation.entry_order.creator.id,
-                is_active: true
-              },
-              include: {
-                client: {
-                  select: {
-                    client_id: true,
-                    client_type: true,
-                    company_name: true,
-                    first_names: true,
-                    last_name: true,
-                    mothers_last_name: true,
-                    email: true,
-                    phone: true,
-                    address: true,
-                    establishment_type: true,
-                    ruc: true,
-                    created_at: true
-                  }
-                }
-              }
-            });
-            
-            if (clientUser && clientUser.client) {
-              clientInfo = clientUser.client;
-            }
-          } catch (error) {
-            console.error('Error fetching client info for user:', item.allocation.entry_order.creator.id, error);
-          }
-        }
-
-        return {
-          ...item,
-          cell_reference: `${item.cell.row}.${String(item.cell.bay).padStart(2, '0')}.${String(item.cell.position).padStart(2, '0')}`,
-          departure_order: departureOrderDetails,
-          movement_logs: movementLogs,
-          movement_summary: movementSummary,
-          client_info: clientInfo,
-        };
-      })
-    );
-  } else {
-    // Basic current inventory without logs
-    processedCurrentInventory = await Promise.all(
-      currentInventory.map(async (item) => {
-        let departureOrderDetails = null;
-        if (item.allocation?.departureAllocations && item.allocation.departureAllocations.length > 0) {
-          departureOrderDetails = item.allocation.departureAllocations[0].departure_order;
-        }
-
-        // Get client information if the entry order creator is a CLIENT
-        let clientInfo = null;
-        if (item.allocation?.entry_order?.creator?.role?.name === 'CLIENT') {
-          try {
-            // Use the new ClientUser relationship
-            const clientUser = await prisma.clientUser.findFirst({
-              where: {
-                user_id: item.allocation.entry_order.creator.id,
-                is_active: true
-              },
-              include: {
-                client: {
-                  select: {
-                    client_id: true,
-                    client_type: true,
-                    company_name: true,
-                    first_names: true,
-                    last_name: true,
-                    mothers_last_name: true,
-                    email: true,
-                    phone: true,
-                    address: true,
-                    establishment_type: true,
-                    ruc: true,
-                    created_at: true
-                  }
-                }
-              }
-            });
-            
-            if (clientUser && clientUser.client) {
-              clientInfo = clientUser.client;
-            }
-          } catch (error) {
-            console.error('Error fetching client info for user:', item.allocation.entry_order.creator.id, error);
-          }
-        }
-
-        return {
-          ...item,
-          cell_reference: `${item.cell.row}.${String(item.cell.bay).padStart(2, '0')}.${String(item.cell.position).padStart(2, '0')}`,
-          departure_order: departureOrderDetails,
-          client_info: clientInfo,
-        };
-      })
-    );
-  }
-
-  // ✅ SECTION 4: CREATE SIMPLIFIED MOVEMENT LOGS TABLE
-  const consolidatedMovements = [];
-  
-  // Process each inventory item's movement logs
-  processedCurrentInventory.forEach(item => {
-    if (item.movement_logs && item.movement_logs.length > 0) {
-      item.movement_logs.forEach(log => {
-        // Calculate historical state at the time of this movement
-        // For quantity and weight, we need to calculate backward from current state
-        let historicalQuantity = item.current_quantity;
-        let historicalWeight = parseFloat(item.current_weight) || 0;
-        
-        // Calculate the state before later movements by adding back future changes
-        const laterMovements = item.movement_logs.filter(laterLog => 
-          new Date(laterLog.timestamp) > new Date(log.timestamp)
-        );
-        
-        for (const laterLog of laterMovements) {
-          historicalQuantity -= (laterLog.quantity_change || 0);
-          historicalWeight -= parseFloat(laterLog.weight_change || 0);
-        }
-        
-        // For quality status: determine based on movement type and business rules
-        let historicalQualityStatus;
-        if (log.movement_type === 'ENTRY') {
-          // All entries start in quarantine
-          historicalQualityStatus = 'CUARENTENA';
-        } else if (log.movement_type === 'TRANSFER' || log.movement_type === 'ADJUSTMENT') {
-          // For transfers/adjustments, this represents a quality control transition
-          // The transition shows the RESULT status (where it went TO)
-          // Use the current allocation quality status as this represents the final state
-          historicalQualityStatus = item.allocation.quality_status;
-        } else if (log.movement_type === 'DEPARTURE') {
-          // Departures can only happen from approved items
-          historicalQualityStatus = 'APROBADO';
-        } else {
-          // Fallback to current status
-          historicalQualityStatus = item.allocation.quality_status;
-        }
-        
-        // Create movement entry with historical data
-        const movement = {
-          log_id: log.log_id,
-          timestamp: log.timestamp,
-          movement_type: log.movement_type,
-          quantity_change: log.quantity_change,
-          package_change: log.package_change,
-          weight_change: parseFloat(log.weight_change) || 0,
-          
-          // Product information
-          product_code: item.product.product_code,
-          product_name: item.product.name,
-          manufacturer: item.product.manufacturer,
-          lot_series: item.allocation.entry_order_product.lot_series,
-          
-          // Historical location information (from the log)
-          warehouse_name: log.warehouse?.name || item.warehouse.name,
-          cell_reference: log.cell ? 
-            `${log.cell.row}.${String(log.cell.bay).padStart(2, '0')}.${String(log.cell.position).padStart(2, '0')}` : 
-            item.cell_reference,
-          
-          // Historical status (calculated based on business rules)
-          current_quantity: historicalQuantity,
-          current_weight: historicalWeight,
-          quality_status: historicalQualityStatus,
-          
-          // Client information (from entry order)
-          client_name: item.client_info?.company_name || `${item.client_info?.first_names || ''} ${item.client_info?.last_name || ''}`.trim(),
-          client_email: item.client_info?.email,
-          
-          // Additional details
-          manufacturing_date: item.allocation.entry_order_product.manufacturing_date,
-          expiration_date: item.allocation.entry_order_product.expiration_date,
-          notes: log.notes || null,
-        };
-
-        // Map order details based on movement type
-        if (log.movement_type === 'ENTRY') {
-          // For entries, map entry order details
-          movement.order_no = item.allocation.entry_order.entry_order_no;
-          movement.order_id = item.allocation.entry_order.entry_order_id;
-          movement.order_date = item.allocation.entry_order.registration_date;
-          movement.order_type = 'ENTRY';
-          movement.created_by = item.allocation.entry_order.creator ? 
-            `${item.allocation.entry_order.creator.first_name} ${item.allocation.entry_order.creator.last_name}` : null;
-          movement.reviewed_by = item.allocation.entry_order.reviewer ? 
-            `${item.allocation.entry_order.reviewer.first_name} ${item.allocation.entry_order.reviewer.last_name}` : null;
-        } else if (log.movement_type === 'DEPARTURE' && log.departure_order) {
-          // For departures, map departure order details
-          movement.order_no = log.departure_order.departure_order_no;
-          movement.order_id = log.departure_order_id;
-          movement.order_date = log.departure_order.departure_date_time;
-          movement.order_type = 'DEPARTURE';
-          movement.order_status = log.departure_order.order_status;
-          movement.destination_point = log.departure_order.destination_point;
-          movement.carrier_name = log.departure_order.carrier_name;
-          movement.customer_name = log.departure_order.customer?.name || null;
-        } else {
-          // For adjustments or entries without departure orders
-          movement.order_no = item.allocation.entry_order.entry_order_no;
-          movement.order_id = item.allocation.entry_order.entry_order_id;
-          movement.order_date = item.allocation.entry_order.registration_date;
-          movement.order_type = 'ENTRY';
-        }
-
-        consolidatedMovements.push(movement);
-      });
-    }
-  });
-
-  // ✅ FIX: Final deduplication at consolidated level (same log can appear in multiple inventory items)
-  const finalLogMap = new Map();
-  consolidatedMovements.forEach(movement => {
-    if (!finalLogMap.has(movement.log_id)) {
-      finalLogMap.set(movement.log_id, movement);
-    }
-  });
-  const deduplicatedMovements = Array.from(finalLogMap.values());
-
-  // Sort by timestamp (newest first)
-  deduplicatedMovements.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-  // ✅ SECTION 5: RETURN SIMPLIFIED SUMMARY
-  const summaryStats = {
-    current_inventory: {
-      total_items: processedCurrentInventory.length,
-      total_quantity: processedCurrentInventory.reduce((sum, item) => sum + (item.current_quantity || 0), 0),
-      total_weight: processedCurrentInventory.reduce((sum, item) => sum + parseFloat(item.current_weight || 0), 0),
-      unique_products: [...new Set(processedCurrentInventory.map(item => item.product.product_id))].length,
-      warehouses: [...new Set(processedCurrentInventory.map(item => item.warehouse.warehouse_id))].length,
+    orderBy: {
+      timestamp: 'desc'
     },
-    movement_logs: {
-      total_movements: deduplicatedMovements.length,
-      total_entries: deduplicatedMovements.filter(m => m.movement_type === 'ENTRY').length,
-      total_departures: deduplicatedMovements.filter(m => m.movement_type === 'DEPARTURE').length,
-      total_adjustments: deduplicatedMovements.filter(m => m.movement_type === 'ADJUSTMENT').length,
-      unique_products: [...new Set(deduplicatedMovements.map(m => m.product_id))].length,
+    skip,
+    take
+  });
+
+  // Transform logs to match UI requirements
+  const transformedLogs = logs.map(log => {
+    // Determine client name
+    let clientName = null;
+
+    if (log.allocation?.entry_order?.creator) {
+      const creator = log.allocation.entry_order.creator;
+      if (creator.clientUserAccounts && creator.clientUserAccounts.length > 0) {
+        const client = creator.clientUserAccounts[0].client;
+        clientName = client.company_name ||
+                    `${client.first_names || ''} ${client.last_name || ''}`.trim();
+      } else {
+        clientName = `${creator.first_name || ''} ${creator.last_name || ''}`.trim();
+      }
+    } else if (log.departure_order?.client) {
+      const client = log.departure_order.client;
+      clientName = client.company_name ||
+                  `${client.first_names || ''} ${client.last_name || ''}`.trim();
     }
-  };
+
+    // Calculate current_quantity and current_weight based on movement type
+    // For historical accuracy, we calculate the state AFTER this movement
+    let currentQuantity = null;
+    let currentWeight = null;
+
+    if (log.allocation) {
+      // Use allocation data as the source of truth for current values
+      currentQuantity = log.allocation.inventory_quantity;
+      currentWeight = parseFloat(log.allocation.weight_kg);
+    }
+
+    // Determine order_no and order_status
+    let orderNo = null;
+    let orderStatus = null;
+
+    if (log.movement_type === 'DEPARTURE' && log.departure_order) {
+      orderNo = log.departure_order.departure_order_no;
+      orderStatus = log.departure_order.order_status;
+    } else if (log.entry_order) {
+      orderNo = log.entry_order.entry_order_no;
+      orderStatus = log.entry_order.order_status;
+    } else if (log.allocation?.entry_order) {
+      orderNo = log.allocation.entry_order.entry_order_no;
+      orderStatus = log.allocation.entry_order.order_status;
+    }
+
+    return {
+      client_name: clientName || 'N/A',
+      product_name: log.product?.name || 'N/A',
+      product_code: log.product?.product_code || 'N/A',
+      quantity_change: log.quantity_change || 0,
+      current_quantity: currentQuantity,
+      weight_change: parseFloat(log.weight_change) || 0,
+      current_weight: currentWeight,
+      warehouse_name: log.warehouse?.name || 'N/A',
+      cell_reference: log.cell
+        ? `${log.cell.row}.${String(log.cell.bay).padStart(2, '0')}.${String(log.cell.position).padStart(2, '0')}`
+        : 'N/A',
+      order_no: orderNo || 'N/A',
+      order_status: orderStatus || 'N/A',
+      quality_status: log.quality_status || 'N/A',
+      movement_type: log.movement_type,
+      timestamp: log.timestamp
+    };
+  });
+
+  // Calculate pagination metadata
+  const totalPages = Math.ceil(total / page_size);
 
   return {
     success: true,
-    summary_stats: summaryStats,
-    movement_logs: deduplicatedMovements,
-    filters_applied: {
-      warehouse_id: warehouse_id || 'ALL',
-      product_id: product_id || 'ALL', 
-      status: status || 'ALL',
-      include_logs: include_logs,
-      include_dispatch_history: include_dispatch_history,
+    data: transformedLogs,
+    pagination: {
+      page: parseInt(page),
+      page_size: take,
+      total,
+      total_pages: totalPages,
+      has_next: page < totalPages,
+      has_prev: page > 1
     },
-    generated_at: new Date().toISOString(),
+    filters_applied: {
+      warehouse_id: warehouse_id || null,
+      product_id: product_id || null,
+      product_name: product_name || null,
+      product_code: product_code || null,
+      client_name: client_name || null,
+      movement_type: movement_type || null,
+      date_from: date_from || null,
+      date_to: date_to || null
+    }
   };
+}
+
+/**
+ * ✅ DEPRECATED: Old comprehensive inventory summary
+ * Kept for backward compatibility but should not be used for the movement logs table
+ * Use getInventoryMovementLogs() instead for the inventory movement history UI
+ */
+async function getInventorySummary(filters = {}) {
+  console.warn('⚠️  DEPRECATED: getInventorySummary is deprecated. Use getInventoryMovementLogs for the movement logs table UI.');
+
+  // For now, redirect to the new optimized function
+  return await getInventoryMovementLogs(filters);
 }
 
 /** Fetch all warehouses */
@@ -2433,6 +1946,7 @@ async function transitionQualityStatus(transitionData) {
         cell_id: finalCellId,
         product_status: allocation.product_status,
         status_code: allocation.status_code,
+        quality_status: to_status, // ✅ NEW: Capture the NEW quality status after transition
         notes: `${isFullTransition ? 'Full' : 'Partial'} quality transition: ${cleanQuantityToMove} units (${cleanPackageQuantityToMove} packages, ${cleanWeightToMove} kg) ${isFullTransition ? 'moved' : 'split'} from ${allocation.quality_status} to ${to_status}. Reason: ${reason}.${isFullTransition ? '' : ` Remaining ${remainingQuantity} units stay in ${allocation.quality_status}.`}${new_cell_id && new_cell_id !== allocation.cell_id ? ` Cell: ${allocation.cell.row}.${allocation.cell.bay}.${allocation.cell.position} → New cell` : ' Same cell'}`,
       },
     });
@@ -3464,6 +2978,7 @@ async function bulkAssignEntryOrder(bulkAssignmentData) {
         cell_id: allocationData.cell_id,
         product_status: productStatusEnum,
         status_code: statusCode,
+        quality_status: allocation.quality_status, // ✅ NEW: Capture quality status at time of bulk entry
         notes: `Bulk assignment: ${allocationData.inventory_quantity} units to quarantine`
       };
     });
@@ -3781,7 +3296,8 @@ module.exports = {
   assignProductToCell,
   getAvailableCells,
   getClientAssignedCells,
-  getInventorySummary,
+  getInventorySummary, // ✅ DEPRECATED: Use getInventoryMovementLogs instead
+  getInventoryMovementLogs, // ✅ NEW: Optimized lean paginated logs for movement history table
   getAllWarehouses,
   getWarehouseCells,
   createAuditLog,

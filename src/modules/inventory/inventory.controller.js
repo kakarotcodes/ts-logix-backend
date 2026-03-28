@@ -403,11 +403,11 @@ async function getAvailableCellsForWarehouse(req, res) {
   }
 }
 
-/** Get inventory summary */
+/** ✅ DEPRECATED: Get inventory summary - use getInventoryMovementLogs instead */
 async function getInventorySummary(req, res) {
   try {
     const summary = await inventoryService.getInventorySummary(req.query);
-    
+
     return res.json({
       success: true,
       count: summary.length,
@@ -415,9 +415,34 @@ async function getInventorySummary(req, res) {
     });
   } catch (err) {
     console.error("Error fetching inventory summary:", err);
-    return res.status(500).json({ 
-      success: false, 
-      message: err.message 
+    return res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+}
+
+/** ✅ NEW: Get paginated inventory movement logs optimized for table UI */
+async function getInventoryMovementLogs(req, res) {
+  try {
+    const userRole = req.user?.role;
+
+    // Only admin, warehouse staff, and pharmacists can view movement logs
+    if (!["WAREHOUSE_INCHARGE", "ADMIN", "PHARMACIST"].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only warehouse staff, admin, and pharmacists can view inventory movement logs."
+      });
+    }
+
+    const result = await inventoryService.getInventoryMovementLogs(req.query);
+
+    return res.json(result);
+  } catch (err) {
+    console.error("Error fetching inventory movement logs:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message
     });
   }
 }
@@ -1280,7 +1305,8 @@ module.exports = {
   getEntryOrderProductsForInventory,
   assignProductToCell,
   getAvailableCellsForWarehouse,
-  getInventorySummary,
+  getInventorySummary, // ✅ DEPRECATED: Use getInventoryMovementLogs instead
+  getInventoryMovementLogs, // ✅ NEW: Optimized paginated logs endpoint
   fetchWarehouses,
   fetchCells,
   getQuarantineInventory,

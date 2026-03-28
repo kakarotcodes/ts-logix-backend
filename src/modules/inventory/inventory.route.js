@@ -11,9 +11,13 @@ router.get("/entry-order/:entryOrderId/products", controller.getEntryOrderProduc
 // Assign a specific product to a warehouse cell
 router.post("/assign-product", controller.assignProductToCell);
 
-// Get inventory summary with filters
+// ✅ DEPRECATED: Get inventory summary - use /movement-logs instead
 // Query params: warehouse_id, product_id, product_name, product_code, client_name, status, include_logs, include_dispatch_history
 router.get("/summary", controller.getInventorySummary);
+
+// ✅ NEW: Get paginated inventory movement logs optimized for table UI
+// Query params: warehouse_id, product_id, product_name, product_code, client_name, movement_type, date_from, date_to, page, page_size
+router.get("/movement-logs", controller.getInventoryMovementLogs);
 
 // Get available cells for a specific warehouse
 router.get("/warehouses/:warehouse_id/available-cells", controller.getAvailableCellsForWarehouse);
