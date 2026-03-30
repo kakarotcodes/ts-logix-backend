@@ -172,12 +172,12 @@ async function validateExcelStructure(workbook, userId, userRole) {
 
   try {
     // Check required sheets exist
-    const requiredSheets = ['Entry_Orders', 'Products'];
+    const requiredSheets = ['Órdenes_Entrada', 'Productos'];
     const availableSheets = workbook.SheetNames;
 
     for (const sheet of requiredSheets) {
       if (!availableSheets.includes(sheet)) {
-        errors.push(`Missing required sheet: ${sheet}`);
+        errors.push(`Falta la hoja requerida: ${sheet}`);
       }
     }
 
@@ -186,19 +186,19 @@ async function validateExcelStructure(workbook, userId, userRole) {
     }
 
     // Parse Entry Orders
-    const entryOrdersSheet = workbook.Sheets['Entry_Orders'];
+    const entryOrdersSheet = workbook.Sheets['Órdenes_Entrada'];
     const entryOrders = XLSX.utils.sheet_to_json(entryOrdersSheet);
 
     // Parse Products
-    const productsSheet = workbook.Sheets['Products'];
+    const productsSheet = workbook.Sheets['Productos'];
     const products = XLSX.utils.sheet_to_json(productsSheet);
 
     if (entryOrders.length === 0) {
-      errors.push('Entry_Orders sheet is empty');
+      errors.push('La hoja Órdenes_Entrada está vacía');
     }
 
     if (products.length === 0) {
-      errors.push('Products sheet is empty');
+      errors.push('La hoja Productos está vacía');
     }
 
     if (errors.length > 0) {
@@ -296,89 +296,89 @@ async function validateEntryOrdersWithMapping(entryOrders, userId, userRole) {
     mappedRow.order_index = i; // Use row index to group products with orders later
 
     // Origin name mapping
-    if (!row['Origin Name']) {
-      rowErrors.push(`Row ${rowNumber}: Origin Name is required`);
+    if (!row['Nombre del Origen']) {
+      rowErrors.push(`Fila ${rowNumber}: Nombre del Origen es requerido`);
     } else {
-      const originName = row['Origin Name'].toLowerCase().trim();
+      const originName = row['Nombre del Origen'].toLowerCase().trim();
       const originId = originNameToId.get(originName);
       if (!originId) {
-        rowErrors.push(`Row ${rowNumber}: Invalid Origin Name '${row['Origin Name']}'. Check Origins reference sheet.`);
+        rowErrors.push(`Fila ${rowNumber}: Nombre del Origen inválido '${row['Nombre del Origen']}'. Verifique la hoja de referencia Orígenes.`);
       } else {
         mappedRow.origin_id = originId;
       }
     }
 
     // Personnel mapping
-    if (!row['Personnel In Charge']) {
-      rowErrors.push(`Row ${rowNumber}: Personnel In Charge is required`);
+    if (!row['Personal a Cargo']) {
+      rowErrors.push(`Fila ${rowNumber}: Personal a Cargo es requerido`);
     } else {
-      const personnelName = row['Personnel In Charge'].toLowerCase().trim();
+      const personnelName = row['Personal a Cargo'].toLowerCase().trim();
       const personnelId = userNameToId.get(personnelName);
       if (!personnelId) {
-        rowErrors.push(`Row ${rowNumber}: Invalid Personnel In Charge '${row['Personnel In Charge']}'. Check Personnel reference sheet.`);
+        rowErrors.push(`Fila ${rowNumber}: Personal a Cargo inválido '${row['Personal a Cargo']}'. Verifique la hoja de referencia Personal.`);
       } else {
         mappedRow.personnel_incharge_id = personnelId;
       }
     }
 
     // Supplier mapping (optional for reconditioned orders)
-    if (row['Supplier Name']) {
-      const supplierName = row['Supplier Name'].toLowerCase().trim();
+    if (row['Nombre del Proveedor']) {
+      const supplierName = row['Nombre del Proveedor'].toLowerCase().trim();
       const supplierId = supplierNameToId.get(supplierName);
       if (!supplierId) {
-        rowErrors.push(`Row ${rowNumber}: Invalid Supplier Name '${row['Supplier Name']}'. Check Suppliers reference sheet.`);
+        rowErrors.push(`Fila ${rowNumber}: Nombre del Proveedor inválido '${row['Nombre del Proveedor']}'. Verifique la hoja de referencia Proveedores.`);
       } else {
         mappedRow.supplier_id = supplierId;
       }
     }
 
     // Date validation and conversion
-    if (!row['Registration Date']) {
-      rowErrors.push(`Row ${rowNumber}: Registration Date is required`);
+    if (!row['Fecha de Registro']) {
+      rowErrors.push(`Fila ${rowNumber}: Fecha de Registro es requerida`);
     } else {
       // Convert Excel serial date to ISO string
-      const convertedDate = convertExcelDate(row['Registration Date']);
+      const convertedDate = convertExcelDate(row['Fecha de Registro']);
       mappedRow.registration_date = convertedDate;
       if (!convertedDate || !isValidDate(convertedDate)) {
-        rowErrors.push(`Row ${rowNumber}: Invalid Registration Date format. Use YYYY-MM-DD`);
+        rowErrors.push(`Fila ${rowNumber}: Formato de Fecha de Registro inválido. Use AAAA-MM-DD`);
       }
     }
 
-    if (!row['Document Date']) {
-      rowErrors.push(`Row ${rowNumber}: Document Date is required`);
+    if (!row['Fecha del Documento']) {
+      rowErrors.push(`Fila ${rowNumber}: Fecha del Documento es requerida`);
     } else {
       // Convert Excel serial date to ISO string
-      const convertedDate = convertExcelDate(row['Document Date']);
+      const convertedDate = convertExcelDate(row['Fecha del Documento']);
       mappedRow.document_date = convertedDate;
       if (!convertedDate || !isValidDate(convertedDate)) {
-        rowErrors.push(`Row ${rowNumber}: Invalid Document Date format. Use YYYY-MM-DD`);
+        rowErrors.push(`Fila ${rowNumber}: Formato de Fecha del Documento inválido. Use AAAA-MM-DD`);
       }
     }
 
-    if (!row['Admission Date Time']) {
-      rowErrors.push(`Row ${rowNumber}: Admission Date Time is required`);
+    if (!row['Fecha Hora de Admisión']) {
+      rowErrors.push(`Fila ${rowNumber}: Fecha Hora de Admisión es requerida`);
     } else {
       // Convert Excel serial date to ISO string
-      const convertedDateTime = convertExcelDate(row['Admission Date Time']);
+      const convertedDateTime = convertExcelDate(row['Fecha Hora de Admisión']);
       mappedRow.entry_date_time = convertedDateTime;
       if (!convertedDateTime || !isValidDateTime(convertedDateTime)) {
-        rowErrors.push(`Row ${rowNumber}: Invalid Admission Date Time format. Use YYYY-MM-DD HH:MM:SS`);
+        rowErrors.push(`Fila ${rowNumber}: Formato de Fecha Hora de Admisión inválido. Use AAAA-MM-DD HH:MM:SS`);
       }
     }
 
     // Numeric validation
-    if (row['CIF Value']) {
-      const cifValue = parseFloat(row['CIF Value']);
+    if (row['Valor CIF']) {
+      const cifValue = parseFloat(row['Valor CIF']);
       if (isNaN(cifValue) || cifValue < 0) {
-        rowErrors.push(`Row ${rowNumber}: CIF Value must be a positive number`);
+        rowErrors.push(`Fila ${rowNumber}: Valor CIF debe ser un número positivo`);
       } else {
         mappedRow.cif_value = cifValue;
       }
     }
 
     // Optional fields
-    mappedRow.guide_number = row['Guide Number'] || '';
-    mappedRow.observation = row['Observation'] || '';
+    mappedRow.guide_number = row['Número de Guía'] || '';
+    mappedRow.observation = row['Observación'] || '';
     mappedRow.order_status = 'PENDIENTE'; // Auto-set to pending when customer creates order
 
     if (rowErrors.length === 0) {
@@ -471,35 +471,35 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
     const mappedRow = { ...row };
 
     // Order Index validation (products must specify which order they belong to)
-    const orderIndex = parseInt(row['Order Index']);
+    const orderIndex = parseInt(row['Índice de Orden']);
     if (isNaN(orderIndex) || orderIndex < 0) {
-      rowErrors.push(`Row ${rowNumber}: Order Index must be a valid number (0, 1, 2, etc.)`);
+      rowErrors.push(`Fila ${rowNumber}: Índice de Orden debe ser un número válido (0, 1, 2, etc.)`);
     } else {
       mappedRow.order_index = orderIndex;
     }
 
     // Product code validation and mapping
-    if (!row['Product Code']) {
-      rowErrors.push(`Row ${rowNumber}: Product Code is required`);
+    if (!row['Código de Producto']) {
+      rowErrors.push(`Fila ${rowNumber}: Código de Producto es requerido`);
     } else {
-      const productCode = row['Product Code'].toLowerCase().trim();
+      const productCode = row['Código de Producto'].toLowerCase().trim();
       const productId = productCodeToId.get(productCode);
       if (!productId) {
-        rowErrors.push(`Row ${rowNumber}: Product Code '${row['Product Code']}' not found or not assigned to client. Check Products_Reference sheet.`);
+        rowErrors.push(`Fila ${rowNumber}: Código de Producto '${row['Código de Producto']}' no encontrado o no asignado al cliente. Verifique la hoja Productos_Referencia.`);
       } else {
         mappedRow.product_id = productId;
-        mappedRow.product_code = row['Product Code']; // Keep original case
+        mappedRow.product_code = row['Código de Producto']; // Keep original case
       }
     }
 
     // Supplier validation and mapping
-    if (!row['Supplier Name']) {
-      rowErrors.push(`Row ${rowNumber}: Supplier Name is required`);
+    if (!row['Nombre del Proveedor']) {
+      rowErrors.push(`Fila ${rowNumber}: Nombre del Proveedor es requerido`);
     } else {
-      const supplierName = row['Supplier Name'].toLowerCase().trim();
+      const supplierName = row['Nombre del Proveedor'].toLowerCase().trim();
       const supplierId = supplierNameToId.get(supplierName);
       if (!supplierId) {
-        rowErrors.push(`Row ${rowNumber}: Supplier Name '${row['Supplier Name']}' not found or not assigned to client. Check Suppliers reference sheet.`);
+        rowErrors.push(`Fila ${rowNumber}: Nombre del Proveedor '${row['Nombre del Proveedor']}' no encontrado o no asignado al cliente. Verifique la hoja de referencia Proveedores.`);
       } else {
         mappedRow.supplier_id = supplierId;
       }
@@ -507,18 +507,18 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
 
     // Required field validation
     const requiredFields = [
-      ['Serial Number', 'serial_number'],
-      ['Lot Series', 'lot_series'],
-      ['Manufacturing Date', 'manufacturing_date'],
-      ['Expiration Date', 'expiration_date'],
-      ['Inventory Quantity', 'inventory_quantity'],
-      ['Package Quantity', 'package_quantity'],
-      ['Weight (kg)', 'weight_kg']
+      ['Número de Serie', 'serial_number'],
+      ['Serie de Lote', 'lot_series'],
+      ['Fecha de Fabricación', 'manufacturing_date'],
+      ['Fecha de Vencimiento', 'expiration_date'],
+      ['Cantidad de Inventario', 'inventory_quantity'],
+      ['Cantidad de Paquetes', 'package_quantity'],
+      ['Peso (kg)', 'weight_kg']
     ];
 
     requiredFields.forEach(([excelField, dbField]) => {
       if (!row[excelField]) {
-        rowErrors.push(`Row ${rowNumber}: ${excelField} is required`);
+        rowErrors.push(`Fila ${rowNumber}: ${excelField} es requerido`);
       } else {
         mappedRow[dbField] = row[excelField];
       }
@@ -526,19 +526,19 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
 
     // Numeric validation
     const numericFields = [
-      ['Inventory Quantity', 'inventory_quantity'],
-      ['Package Quantity', 'package_quantity'],
-      ['Weight (kg)', 'weight_kg'],
-      ['Volume (m³)', 'volume_m3'],
-      ['Quantity Pallets', 'quantity_pallets'],
-      ['Insured Value', 'insured_value']
+      ['Cantidad de Inventario', 'inventory_quantity'],
+      ['Cantidad de Paquetes', 'package_quantity'],
+      ['Peso (kg)', 'weight_kg'],
+      ['Volumen (m³)', 'volume_m3'],
+      ['Cantidad de Pallets', 'quantity_pallets'],
+      ['Valor Asegurado', 'insured_value']
     ];
 
     numericFields.forEach(([excelField, dbField]) => {
       if (row[excelField]) {
         const value = parseFloat(row[excelField]);
         if (isNaN(value) || value < 0) {
-          rowErrors.push(`Row ${rowNumber}: ${excelField} must be a positive number`);
+          rowErrors.push(`Fila ${rowNumber}: ${excelField} debe ser un número positivo`);
         } else {
           mappedRow[dbField] = value;
         }
@@ -546,18 +546,18 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
     });
 
     // Date validation and conversion
-    if (row['Manufacturing Date']) {
-      const convertedMfgDate = convertExcelDate(row['Manufacturing Date']);
+    if (row['Fecha de Fabricación']) {
+      const convertedMfgDate = convertExcelDate(row['Fecha de Fabricación']);
       mappedRow.manufacturing_date = convertedMfgDate;
 
       if (!convertedMfgDate) {
-        rowErrors.push(`Row ${rowNumber}: Invalid Manufacturing Date format. Use YYYY-MM-DD`);
+        rowErrors.push(`Fila ${rowNumber}: Formato de Fecha de Fabricación inválido. Use AAAA-MM-DD`);
       }
     }
 
     // Handle Expiration Date - accept "S / F" (Sin Fecha / Without Date) as valid for no expiration
-    if (row['Expiration Date']) {
-      const expDateValue = row['Expiration Date'];
+    if (row['Fecha de Vencimiento']) {
+      const expDateValue = row['Fecha de Vencimiento'];
 
       // Check if it's "S / F" or similar variations (case-insensitive, with or without spaces)
       const noExpirationValues = ['S / F', 'S/F', 'SF', 'SIN FECHA', 'WITHOUT DATE', 'N/A'];
@@ -572,36 +572,36 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
         mappedRow.expiration_date = convertedExpDate;
 
         if (!convertedExpDate) {
-          rowErrors.push(`Row ${rowNumber}: Invalid Expiration Date format. Use YYYY-MM-DD or "S / F" for no expiration`);
+          rowErrors.push(`Fila ${rowNumber}: Formato de Fecha de Vencimiento inválido. Use AAAA-MM-DD o "S / F" para sin vencimiento`);
         } else if (mappedRow.manufacturing_date) {
           // Validate expiration is after manufacturing
           const mfgDate = new Date(mappedRow.manufacturing_date);
           const expDate = new Date(convertedExpDate);
 
           if (!isNaN(mfgDate) && !isNaN(expDate) && expDate <= mfgDate) {
-            rowErrors.push(`Row ${rowNumber}: Expiration Date must be after Manufacturing Date`);
+            rowErrors.push(`Fila ${rowNumber}: Fecha de Vencimiento debe ser posterior a Fecha de Fabricación`);
           }
         }
       }
     }
 
     // Presentation validation
-    if (row['Presentation']) {
-      if (!validPresentations.has(row['Presentation'])) {
-        rowErrors.push(`Row ${rowNumber}: Invalid Presentation '${row['Presentation']}'. Valid options: ${Array.from(validPresentations).join(', ')}`);
+    if (row['Presentación']) {
+      if (!validPresentations.has(row['Presentación'])) {
+        rowErrors.push(`Fila ${rowNumber}: Presentación inválida '${row['Presentación']}'. Opciones válidas: ${Array.from(validPresentations).join(', ')}`);
       } else {
-        mappedRow.presentation = row['Presentation'];
+        mappedRow.presentation = row['Presentación'];
       }
     } else {
       mappedRow.presentation = 'CAJA'; // Default
     }
 
     // Temperature range validation
-    if (row['Temperature Range']) {
-      if (!validTemperatureRanges.has(row['Temperature Range'])) {
-        rowErrors.push(`Row ${rowNumber}: Invalid Temperature Range '${row['Temperature Range']}'. Valid options: ${Array.from(validTemperatureRanges).join(', ')}`);
+    if (row['Rango de Temperatura']) {
+      if (!validTemperatureRanges.has(row['Rango de Temperatura'])) {
+        rowErrors.push(`Fila ${rowNumber}: Rango de Temperatura inválido '${row['Rango de Temperatura']}'. Opciones válidas: ${Array.from(validTemperatureRanges).join(', ')}`);
       } else {
-        mappedRow.temperature_range = row['Temperature Range'];
+        mappedRow.temperature_range = row['Rango de Temperatura'];
       }
     } else {
       mappedRow.temperature_range = 'AMBIENTE'; // Default
@@ -609,10 +609,10 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
 
     // Optional fields mapping
     const optionalFields = [
-      ['Humidity', 'humidity'],
-      ['Health Registration', 'health_registration'],
-      ['Product Description', 'product_description'],
-      ['Technical Specification', 'technical_specification']
+      ['Humedad', 'humidity'],
+      ['Registro Sanitario', 'health_registration'],
+      ['Descripción del Producto', 'product_description'],
+      ['Especificación Técnica', 'technical_specification']
     ];
 
     optionalFields.forEach(([excelField, dbField]) => {
@@ -622,17 +622,17 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
     });
 
     // Duplicate product detection within order (Product Code + Lot Series must be unique)
-    if (mappedRow.order_index !== undefined && row['Product Code']) {
+    if (mappedRow.order_index !== undefined && row['Código de Producto']) {
       if (!productsPerOrder.has(mappedRow.order_index)) {
         productsPerOrder.set(mappedRow.order_index, new Set());
       }
 
       const orderProducts = productsPerOrder.get(mappedRow.order_index);
-      const lotSeries = row['Lot Series'] || '';
-      const productKey = `${row['Product Code']}|${lotSeries}`; // Unique key: Product Code + Lot Series
+      const lotSeries = row['Serie de Lote'] || '';
+      const productKey = `${row['Código de Producto']}|${lotSeries}`; // Unique key: Product Code + Lot Series
 
       if (orderProducts.has(productKey)) {
-        rowErrors.push(`Row ${rowNumber}: Duplicate Product Code '${row['Product Code']}' with Lot Series '${lotSeries}' in order index ${mappedRow.order_index}`);
+        rowErrors.push(`Fila ${rowNumber}: Código de Producto duplicado '${row['Código de Producto']}' con Serie de Lote '${lotSeries}' en índice de orden ${mappedRow.order_index}`);
       } else {
         orderProducts.add(productKey);
       }
@@ -877,108 +877,108 @@ async function generateBulkEntryTemplate(userId, userRole) {
 
     // INSTRUCTIONS SHEET - User guide
     const instructions = [
-      { Step: 1, Instruction: 'Fill out the Entry Orders sheet with one row per order' },
-      { Step: 2, Instruction: 'Fill out the Products sheet with all products for each order' },
-      { Step: 3, Instruction: 'Use EXACT names from the reference sheets (Origins, Suppliers, etc.)' },
-      { Step: 4, Instruction: 'For Document Types, select from available options in DocumentTypes sheet' },
-      { Step: 5, Instruction: 'Product codes must match exactly from Products reference sheet' },
-      { Step: 6, Instruction: 'Dates should be in YYYY-MM-DD format' },
-      { Step: 7, Instruction: 'Date-time should be in YYYY-MM-DD HH:MM:SS format' },
-      { Step: 8, Instruction: 'Temperature Range options: AMBIENTE, RANGE_15_25, RANGE_15_30, RANGE_2_8' },
-      { Step: 9, Instruction: 'Presentation options: CAJA, PALETA, SACO, UNIDAD, PAQUETE, TAMBOS, BULTO, OTRO' },
-      { Step: 10, Instruction: 'Upload the completed file to the bulk upload page' }
+      { Paso: 1, Instrucción: 'Complete la hoja Órdenes_Entrada con una fila por orden' },
+      { Paso: 2, Instrucción: 'Complete la hoja Productos con todos los productos de cada orden' },
+      { Paso: 3, Instrucción: 'Use nombres EXACTOS de las hojas de referencia (Orígenes, Proveedores, etc.)' },
+      { Paso: 4, Instrucción: 'Para Tipos de Documento, seleccione de las opciones disponibles en la hoja TiposDocumento' },
+      { Paso: 5, Instrucción: 'Los códigos de producto deben coincidir exactamente con la hoja Productos_Referencia' },
+      { Paso: 6, Instrucción: 'Las fechas deben estar en formato AAAA-MM-DD' },
+      { Paso: 7, Instrucción: 'La fecha-hora debe estar en formato AAAA-MM-DD HH:MM:SS' },
+      { Paso: 8, Instrucción: 'Opciones de Rango de Temperatura: AMBIENTE, FRIO, CONGELADO' },
+      { Paso: 9, Instrucción: 'Opciones de Presentación: CAJA, BLISTER, FRASCO, AMPOLLA, VIAL, SOBRE' },
+      { Paso: 10, Instrucción: 'Cargue el archivo completado en la página de carga masiva' }
     ];
 
     // ENTRY ORDERS TEMPLATE - Using user-friendly names
     const entryOrdersTemplate = [
       {
-        'Origin Name': origins[0]?.name || 'Import',
-        'Personnel In Charge': users[0] ? `${users[0].first_name || ''} ${users[0].last_name || ''}`.trim() : 'Select from Personnel sheet',
-        'Supplier Name': suppliers[0]?.company_name || suppliers[0]?.name || 'Select from Suppliers sheet',
-        'Registration Date': '2025-01-15',
-        'Document Date': '2025-01-15',
-        'Admission Date Time': '2025-01-15 14:30:00',
-        'CIF Value': '15000.00',
-        'Guide Number': 'GN001',
-        'Observation': 'Sample entry order - replace with your data'
+        'Nombre del Origen': origins[0]?.name || 'Importación',
+        'Personal a Cargo': users[0] ? `${users[0].first_name || ''} ${users[0].last_name || ''}`.trim() : 'Seleccionar de hoja Personal',
+        'Nombre del Proveedor': suppliers[0]?.company_name || suppliers[0]?.name || 'Seleccionar de hoja Proveedores',
+        'Fecha de Registro': '2025-01-15',
+        'Fecha del Documento': '2025-01-15',
+        'Fecha Hora de Admisión': '2025-01-15 14:30:00',
+        'Valor CIF': '15000.00',
+        'Número de Guía': 'GN001',
+        'Observación': 'Orden de entrada de ejemplo - reemplace con sus datos'
       }
     ];
 
     // PRODUCTS TEMPLATE - Matching frontend form exactly
     const productsTemplate = [
       {
-        'Order Index': '0',
-        'Product Code': products[0]?.product_code || 'Select from Products sheet',
-        'Supplier Name': suppliers[0]?.company_name || suppliers[0]?.name || 'Select from Suppliers sheet',
-        'Serial Number': 'SN001',
-        'Lot Series': 'LOT001',
-        'Manufacturing Date': '2024-01-01',
-        'Expiration Date': '2026-01-01',
-        'Inventory Quantity': '100',
-        'Package Quantity': '10',
-        'Weight (kg)': '50.0',
-        'Volume (m³)': '2.0',
-        'Quantity Pallets': '1',
-        'Presentation': 'CAJA',
-        'Insured Value': '1000.00',
-        'Temperature Range': 'AMBIENTE',
-        'Humidity': '60%',
-        'Health Registration': 'HR001',
-        'Product Description': 'Product description here',
-        'Technical Specification': 'Technical specs here'
+        'Índice de Orden': '0',
+        'Código de Producto': products[0]?.product_code || 'Seleccionar de hoja Productos',
+        'Nombre del Proveedor': suppliers[0]?.company_name || suppliers[0]?.name || 'Seleccionar de hoja Proveedores',
+        'Número de Serie': 'SN001',
+        'Serie de Lote': 'LOT001',
+        'Fecha de Fabricación': '2024-01-01',
+        'Fecha de Vencimiento': '2026-01-01',
+        'Cantidad de Inventario': '100',
+        'Cantidad de Paquetes': '10',
+        'Peso (kg)': '50.0',
+        'Volumen (m³)': '2.0',
+        'Cantidad de Pallets': '1',
+        'Presentación': 'CAJA',
+        'Valor Asegurado': '1000.00',
+        'Rango de Temperatura': 'AMBIENTE',
+        'Humedad': '60%',
+        'Registro Sanitario': 'HR001',
+        'Descripción del Producto': 'Descripción del producto aquí',
+        'Especificación Técnica': 'Especificaciones técnicas aquí'
       }
     ];
 
     // DOCUMENT UPLOADS TEMPLATE
     const documentsTemplate = [
       {
-        'Order Index': '0',
-        'Document Type': documentTypes[0]?.name || 'Select from DocumentTypes sheet',
-        'File Name': 'document1.pdf',
-        'Notes': 'Document upload will be handled separately after Excel processing'
+        'Índice de Orden': '0',
+        'Tipo de Documento': documentTypes[0]?.name || 'Seleccionar de hoja TiposDocumento',
+        'Nombre del Archivo': 'document1.pdf',
+        'Notas': 'La carga de documentos se manejará por separado después del procesamiento del Excel'
       }
     ];
 
     // Add main sheets
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(instructions), 'Instructions');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(entryOrdersTemplate), 'Entry_Orders');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(productsTemplate), 'Products');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(documentsTemplate), 'Documents');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(instructions), 'Instrucciones');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(entryOrdersTemplate), 'Órdenes_Entrada');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(productsTemplate), 'Productos');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(documentsTemplate), 'Documentos');
 
     // Reference sheets for dropdown options
-    const originsRef = origins.map(o => ({ Name: o.name, Type: o.type || 'N/A' }));
-    const documentTypesRef = documentTypes.map(d => ({ Name: d.name, Type: d.type || 'N/A' }));
+    const originsRef = origins.map(o => ({ Nombre: o.name, Tipo: o.type || 'N/A' }));
+    const documentTypesRef = documentTypes.map(d => ({ Nombre: d.name, Tipo: d.type || 'N/A' }));
     const productsRef = products.map(p => ({
-      'Product Code': p.product_code,
-      'Product Name': p.name,
-      'Manufacturer': p.manufacturer || 'N/A'
+      'Código de Producto': p.product_code,
+      'Nombre del Producto': p.name,
+      'Fabricante': p.manufacturer || 'N/A'
     }));
     const suppliersRef = suppliers.map(s => ({
-      'Supplier Name': s.company_name || s.name,
-      'Company': s.company_name || 'N/A',
-      'Contact': s.name || 'N/A'
+      'Nombre del Proveedor': s.company_name || s.name,
+      'Empresa': s.company_name || 'N/A',
+      'Contacto': s.name || 'N/A'
     }));
     const personnelRef = users.map(u => ({
-      'Personnel Name': `${u.first_name || ''} ${u.last_name || ''}`.trim(),
-      'Role': u.role?.name || 'Unknown'
+      'Nombre del Personal': `${u.first_name || ''} ${u.last_name || ''}`.trim(),
+      'Rol': u.role?.name || 'Desconocido'
     }));
     const temperatureRef = temperatureRanges.map(t => ({
-      'Value': t.value,
-      'Description': t.label
+      'Valor': t.value,
+      'Descripción': t.label
     }));
     const presentationRef = presentationOptions.map(p => ({
-      'Value': p.value,
-      'Description': p.label
+      'Valor': p.value,
+      'Descripción': p.label
     }));
 
     // Add reference sheets
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(originsRef), 'Origins');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(documentTypesRef), 'DocumentTypes');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(productsRef), 'Products_Reference');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(suppliersRef), 'Suppliers');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(personnelRef), 'Personnel');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(temperatureRef), 'Temperature_Options');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(presentationRef), 'Presentation_Options');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(originsRef), 'Orígenes');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(documentTypesRef), 'TiposDocumento');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(productsRef), 'Productos_Referencia');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(suppliersRef), 'Proveedores');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(personnelRef), 'Personal');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(temperatureRef), 'Opciones_Temperatura');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(presentationRef), 'Opciones_Presentación');
 
     // Generate buffer
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });

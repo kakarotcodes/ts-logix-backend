@@ -119,17 +119,17 @@ async function processBulkDepartureOrders(fileBuffer, userId, userRole, organisa
     const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
 
     // Validate required sheets
-    const requiredSheets = ['Departure_Orders', 'Products', 'Documents'];
+    const requiredSheets = ['Órdenes_Salida', 'Productos', 'Documentos'];
     const missingSheets = requiredSheets.filter(sheet => !workbook.SheetNames.includes(sheet));
 
     if (missingSheets.length > 0) {
-      throw new Error(`Missing required sheets: ${missingSheets.join(', ')}`);
+      throw new Error(`Faltan las hojas requeridas: ${missingSheets.join(', ')}`);
     }
 
     // Parse each sheet
-    const orderSheet = XLSX.utils.sheet_to_json(workbook.Sheets['Departure_Orders']);
-    const productSheet = XLSX.utils.sheet_to_json(workbook.Sheets['Products']);
-    const documentSheet = XLSX.utils.sheet_to_json(workbook.Sheets['Documents']);
+    const orderSheet = XLSX.utils.sheet_to_json(workbook.Sheets['Órdenes_Salida']);
+    const productSheet = XLSX.utils.sheet_to_json(workbook.Sheets['Productos']);
+    const documentSheet = XLSX.utils.sheet_to_json(workbook.Sheets['Documentos']);
 
     console.log(`📋 Parsed ${orderSheet.length} orders, ${productSheet.length} products, ${documentSheet.length} documents`);
 
@@ -186,13 +186,13 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
 
     // Required fields validation
     const requiredFields = [
-      'Order Index', 'Client Name', 'Warehouse Name', 'Departure Date Time',
-      'Document Date', 'Dispatch Document Number', 'Personnel In Charge'
+      'Índice de Orden', 'Nombre del Cliente', 'Nombre del Almacén', 'Fecha Hora de Salida',
+      'Fecha del Documento', 'Número de Documento de Despacho', 'Personal a Cargo'
     ];
 
     requiredFields.forEach(field => {
       if (row[field] === undefined || row[field] === null || String(row[field]).trim() === '') {
-        rowErrors.push(`Row ${rowNumber}: ${field} is required`);
+        rowErrors.push(`Fila ${rowNumber}: ${field} es requerido`);
       }
     });
 
@@ -202,30 +202,30 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
     }
 
     // Validate client exists
-    const clientId = clientMap.get(row['Client Name']);
+    const clientId = clientMap.get(row['Nombre del Cliente']);
     if (!clientId) {
-      errors.push(`Row ${rowNumber}: Client '${row['Client Name']}' not found`);
+      errors.push(`Fila ${rowNumber}: Cliente '${row['Nombre del Cliente']}' no encontrado`);
       return;
     }
 
     // Validate warehouse exists
-    const warehouseId = warehouseMap.get(row['Warehouse Name']);
+    const warehouseId = warehouseMap.get(row['Nombre del Almacén']);
     if (!warehouseId) {
-      errors.push(`Row ${rowNumber}: Warehouse '${row['Warehouse Name']}' not found`);
+      errors.push(`Fila ${rowNumber}: Almacén '${row['Nombre del Almacén']}' no encontrado`);
       return;
     }
 
     // Transform order data with Excel date conversion
     const orderData = {
-      order_index: parseInt(row['Order Index']),
+      order_index: parseInt(row['Índice de Orden']),
       client_id: clientId,
       warehouse_id: warehouseId,
-      departure_date_time: convertExcelDate(row['Departure Date Time']),  // ✅ Convert Excel serial date
-      document_date: convertExcelDate(row['Document Date']),  // ✅ Convert Excel serial date
-      dispatch_document_number: row['Dispatch Document Number'],
-      guide_number: row['Guide Number'] || '',  // ✅ NEW: Guide Number field
-      personnel_in_charge: row['Personnel In Charge'],
-      observation: row['Observation'] || '',
+      departure_date_time: convertExcelDate(row['Fecha Hora de Salida']),
+      document_date: convertExcelDate(row['Fecha del Documento']),
+      dispatch_document_number: row['Número de Documento de Despacho'],
+      guide_number: row['Número de Guía'] || '',
+      personnel_in_charge: row['Personal a Cargo'],
+      observation: row['Observación'] || '',
       row_number: rowNumber
     };
 
@@ -239,12 +239,12 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
 
     // Required product fields
     const requiredFields = [
-      'Order Index', 'Product Code', 'Requested Quantity', 'Requested Packages'
+      'Índice de Orden', 'Código de Producto', 'Cantidad Solicitada', 'Paquetes Solicitados'
     ];
 
     requiredFields.forEach(field => {
       if (row[field] === undefined || row[field] === null || String(row[field]).trim() === '') {
-        rowErrors.push(`Row ${rowNumber}: ${field} is required`);
+        rowErrors.push(`Fila ${rowNumber}: ${field} es requerido`);
       }
     });
 
@@ -254,17 +254,17 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
     }
 
     // Validate product exists
-    const product = productCodeMap.get(row['Product Code']);
+    const product = productCodeMap.get(row['Código de Producto']);
     if (!product) {
-      errors.push(`Row ${rowNumber}: Product code '${row['Product Code']}' not found`);
+      errors.push(`Fila ${rowNumber}: Código de producto '${row['Código de Producto']}' no encontrado`);
       return;
     }
 
     // Validate order index exists in headers
-    const orderIndex = parseInt(row['Order Index']);
+    const orderIndex = parseInt(row['Índice de Orden']);
     const orderExists = orderHeaders.find(order => order.order_index === orderIndex);
     if (!orderExists) {
-      errors.push(`Row ${rowNumber}: Order Index ${orderIndex} not found in Departure_Orders sheet`);
+      errors.push(`Fila ${rowNumber}: Índice de Orden ${orderIndex} no encontrado en la hoja Órdenes_Salida`);
       return;
     }
 
@@ -272,15 +272,15 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
     const productData = {
       order_index: orderIndex,
       product_id: product.product_id,
-      product_code: row['Product Code'],
+      product_code: row['Código de Producto'],
       product_name: product.name,
-      requested_quantity: parseInt(row['Requested Quantity']),
-      requested_packages: parseInt(row['Requested Packages']),
-      packaging_type: row['Packaging Type'] || 'NORMAL',
-      packaging_status: row['Packaging Status'] || 'NORMAL',
-      guide_number: row['Guide Number'] || '',  // ✅ NEW: Guide Number field
-      lot_series: row['Lot Series'] || '',  // ✅ NEW: Lot Series field
-      notes: row['Notes'] || '',
+      requested_quantity: parseInt(row['Cantidad Solicitada']),
+      requested_packages: parseInt(row['Paquetes Solicitados']),
+      packaging_type: row['Tipo de Empaque'] || 'NORMAL',
+      packaging_status: row['Estado de Empaque'] || 'NORMAL',
+      guide_number: row['Número de Guía'] || '',
+      lot_series: row['Serie de Lote'] || '',
+      notes: row['Notas'] || '',
       row_number: rowNumber
     };
 
@@ -293,11 +293,11 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
     const rowErrors = [];
 
     // Required document fields
-    const requiredFields = ['Order Index', 'Document Type', 'File Name'];
+    const requiredFields = ['Índice de Orden', 'Tipo de Documento', 'Nombre del Archivo'];
 
     requiredFields.forEach(field => {
       if (row[field] === undefined || row[field] === null || String(row[field]).trim() === '') {
-        rowErrors.push(`Row ${rowNumber}: ${field} is required`);
+        rowErrors.push(`Fila ${rowNumber}: ${field} es requerido`);
       }
     });
 
@@ -307,17 +307,17 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
     }
 
     // Validate document type exists
-    const documentTypeId = documentTypeMap.get(row['Document Type']);
+    const documentTypeId = documentTypeMap.get(row['Tipo de Documento']);
     if (!documentTypeId) {
-      errors.push(`Row ${rowNumber}: Document type '${row['Document Type']}' not found`);
+      errors.push(`Fila ${rowNumber}: Tipo de documento '${row['Tipo de Documento']}' no encontrado`);
       return;
     }
 
     // Validate order index exists
-    const orderIndex = parseInt(row['Order Index']);
+    const orderIndex = parseInt(row['Índice de Orden']);
     const orderExists = orderHeaders.find(order => order.order_index === orderIndex);
     if (!orderExists) {
-      errors.push(`Row ${rowNumber}: Order Index ${orderIndex} not found in Departure_Orders sheet`);
+      errors.push(`Fila ${rowNumber}: Índice de Orden ${orderIndex} no encontrado en la hoja Órdenes_Salida`);
       return;
     }
 
@@ -325,9 +325,9 @@ async function validateAndTransformData(orderSheet, productSheet, documentSheet,
     const documentData = {
       order_index: orderIndex,
       document_type_id: documentTypeId,
-      document_type_name: row['Document Type'],
-      file_name: row['File Name'],
-      notes: row['Notes'] || '',
+      document_type_name: row['Tipo de Documento'],
+      file_name: row['Nombre del Archivo'],
+      notes: row['Notas'] || '',
       row_number: rowNumber
     };
 
@@ -602,121 +602,121 @@ async function generateBulkDepartureTemplate(userId, userRole) {
     // Create sample data for template
     const sampleOrders = [
       {
-        'Order Index': 0,
-        'Client Name': clients[0]?.company_name || clients[0]?.first_names + ' ' + clients[0]?.last_name || 'Sample Client',
-        'Warehouse Name': warehouses[0]?.name || 'Main Warehouse',
-        'Departure Date Time': '2025-01-25 14:30:00',
-        'Document Date': '2025-01-25',
-        'Dispatch Document Number': 'DISP-2025-001',
-        'Guide Number': 'GN-2025-001',  // ✅ NEW: Guide Number field
-        'Personnel In Charge': 'Warehouse Incharge',
-        'Observation': 'Sample departure order for bulk template'
+        'Índice de Orden': 0,
+        'Nombre del Cliente': clients[0]?.company_name || clients[0]?.first_names + ' ' + clients[0]?.last_name || 'Cliente de Ejemplo',
+        'Nombre del Almacén': warehouses[0]?.name || 'Almacén Principal',
+        'Fecha Hora de Salida': '2025-01-25 14:30:00',
+        'Fecha del Documento': '2025-01-25',
+        'Número de Documento de Despacho': 'DISP-2025-001',
+        'Número de Guía': 'GN-2025-001',
+        'Personal a Cargo': 'Encargado de Almacén',
+        'Observación': 'Orden de salida de ejemplo para plantilla masiva'
       },
       {
-        'Order Index': 1,
-        'Client Name': clients[1]?.company_name || clients[1]?.first_names + ' ' + clients[1]?.last_name || 'Sample Client 2',
-        'Warehouse Name': warehouses[0]?.name || 'Main Warehouse',
-        'Departure Date Time': '2025-01-26 10:00:00',
-        'Document Date': '2025-01-26',
-        'Dispatch Document Number': 'DISP-2025-002',
-        'Guide Number': 'GN-2025-002',  // ✅ NEW: Guide Number field
-        'Personnel In Charge': 'Warehouse Incharge',
-        'Observation': 'Second sample departure order'
+        'Índice de Orden': 1,
+        'Nombre del Cliente': clients[1]?.company_name || clients[1]?.first_names + ' ' + clients[1]?.last_name || 'Cliente de Ejemplo 2',
+        'Nombre del Almacén': warehouses[0]?.name || 'Almacén Principal',
+        'Fecha Hora de Salida': '2025-01-26 10:00:00',
+        'Fecha del Documento': '2025-01-26',
+        'Número de Documento de Despacho': 'DISP-2025-002',
+        'Número de Guía': 'GN-2025-002',
+        'Personal a Cargo': 'Encargado de Almacén',
+        'Observación': 'Segunda orden de salida de ejemplo'
       }
     ];
 
     const sampleProducts = [
       {
-        'Order Index': 0,
-        'Product Code': products[0]?.product_code || '23352',
-        'Requested Quantity': 100,
-        'Requested Packages': 10,
-        'Lot Series': 'LOT-2025-001',  // ✅ NEW: Lot Series field
-        'Guide Number': 'GN-P-001',  // ✅ NEW: Guide Number field for product
-        'Packaging Type': 'NORMAL',
-        'Packaging Status': 'NORMAL',
-        'Notes': 'First product for departure'
+        'Índice de Orden': 0,
+        'Código de Producto': products[0]?.product_code || '23352',
+        'Cantidad Solicitada': 100,
+        'Paquetes Solicitados': 10,
+        'Serie de Lote': 'LOT-2025-001',
+        'Número de Guía': 'GN-P-001',
+        'Tipo de Empaque': 'NORMAL',
+        'Estado de Empaque': 'NORMAL',
+        'Notas': 'Primer producto para salida'
       },
       {
-        'Order Index': 1,
-        'Product Code': products[1]?.product_code || '23356',
-        'Requested Quantity': 50,
-        'Requested Packages': 5,
-        'Lot Series': 'LOT-2025-002',  // ✅ NEW: Lot Series field
-        'Guide Number': 'GN-P-002',  // ✅ NEW: Guide Number field for product
-        'Packaging Type': 'NORMAL',
-        'Packaging Status': 'NORMAL',
-        'Notes': 'Second product for departure'
+        'Índice de Orden': 1,
+        'Código de Producto': products[1]?.product_code || '23356',
+        'Cantidad Solicitada': 50,
+        'Paquetes Solicitados': 5,
+        'Serie de Lote': 'LOT-2025-002',
+        'Número de Guía': 'GN-P-002',
+        'Tipo de Empaque': 'NORMAL',
+        'Estado de Empaque': 'NORMAL',
+        'Notas': 'Segundo producto para salida'
       }
     ];
 
     const sampleDocuments = [
       {
-        'Order Index': 0,
-        'Document Type': documentTypes[0]?.name || 'Factura',
-        'File Name': 'departure_invoice_001.pdf',
-        'Notes': 'Invoice for first departure order'
+        'Índice de Orden': 0,
+        'Tipo de Documento': documentTypes[0]?.name || 'Factura',
+        'Nombre del Archivo': 'departure_invoice_001.pdf',
+        'Notas': 'Factura para la primera orden de salida'
       },
       {
-        'Order Index': 1,
-        'Document Type': documentTypes[1]?.name || 'Packing List',
-        'File Name': 'departure_packing_002.pdf',
-        'Notes': 'Packing list for second departure order'
+        'Índice de Orden': 1,
+        'Tipo de Documento': documentTypes[1]?.name || 'Lista de Empaque',
+        'Nombre del Archivo': 'departure_packing_002.pdf',
+        'Notas': 'Lista de empaque para la segunda orden de salida'
       }
     ];
 
     // Reference data sheets
     const clientsReference = clients.map(client => ({
-      'Client ID': client.client_id,
-      'Client Name': client.company_name || `${client.first_names} ${client.last_name}`.trim(),
-      'Type': client.client_type
+      'ID del Cliente': client.client_id,
+      'Nombre del Cliente': client.company_name || `${client.first_names} ${client.last_name}`.trim(),
+      'Tipo': client.client_type
     }));
 
     const warehousesReference = warehouses.map(warehouse => ({
-      'Warehouse ID': warehouse.warehouse_id,
-      'Warehouse Name': warehouse.name
+      'ID del Almacén': warehouse.warehouse_id,
+      'Nombre del Almacén': warehouse.name
     }));
 
     const productsReference = products.map(product => ({
-      'Product Code': product.product_code,
-      'Product Name': product.name
+      'Código de Producto': product.product_code,
+      'Nombre del Producto': product.name
     }));
 
     const documentTypesReference = documentTypes.map(docType => ({
-      'Document Type': docType.name,
-      'Type Code': docType.type
+      'Tipo de Documento': docType.name,
+      'Código de Tipo': docType.type
     }));
 
     // Instructions
     const instructions = [
-      { Step: 1, Instruction: 'Fill the Departure_Orders sheet with your departure order information' },
-      { Step: 2, Instruction: 'Use Order Index (0, 1, 2...) to link orders with products and documents' },
-      { Step: 3, Instruction: 'Fill the Products sheet with products to dispatch for each order' },
-      { Step: 4, Instruction: 'Fill the Documents sheet with document references for each order' },
-      { Step: '4a', Instruction: 'Guide Number (optional) can be added at order level or product level' },
-      { Step: '4b', Instruction: 'Lot Series (optional) specifies the product batch/lot number' },
-      { Step: 5, Instruction: 'Client Name must match exactly with names in Clients_Reference sheet' },
-      { Step: 6, Instruction: 'Warehouse Name must match exactly with names in Warehouses_Reference sheet' },
-      { Step: 7, Instruction: 'Product Code must match exactly with codes in Products_Reference sheet' },
-      { Step: 8, Instruction: 'Document Type must match exactly with types in DocumentTypes_Reference sheet' },
-      { Step: 9, Instruction: 'Departure Date Time format: YYYY-MM-DD HH:MM:SS' },
-      { Step: 10, Instruction: 'Upload the completed file to the bulk departure upload page' }
+      { Paso: 1, Instrucción: 'Complete la hoja Órdenes_Salida con la información de sus órdenes de salida' },
+      { Paso: 2, Instrucción: 'Use Índice de Orden (0, 1, 2...) para vincular órdenes con productos y documentos' },
+      { Paso: 3, Instrucción: 'Complete la hoja Productos con los productos a despachar para cada orden' },
+      { Paso: 4, Instrucción: 'Complete la hoja Documentos con las referencias de documentos para cada orden' },
+      { Paso: '4a', Instrucción: 'Número de Guía (opcional) puede agregarse a nivel de orden o producto' },
+      { Paso: '4b', Instrucción: 'Serie de Lote (opcional) especifica el número de lote/batch del producto' },
+      { Paso: 5, Instrucción: 'Nombre del Cliente debe coincidir exactamente con los nombres en la hoja Clientes_Referencia' },
+      { Paso: 6, Instrucción: 'Nombre del Almacén debe coincidir exactamente con los nombres en la hoja Almacenes_Referencia' },
+      { Paso: 7, Instrucción: 'Código de Producto debe coincidir exactamente con los códigos en la hoja Productos_Referencia' },
+      { Paso: 8, Instrucción: 'Tipo de Documento debe coincidir exactamente con los tipos en la hoja TiposDocumento_Referencia' },
+      { Paso: 9, Instrucción: 'Formato de Fecha Hora de Salida: AAAA-MM-DD HH:MM:SS' },
+      { Paso: 10, Instrucción: 'Cargue el archivo completado en la página de carga masiva de salidas' }
     ];
 
     // Create workbook
     const workbook = XLSX.utils.book_new();
 
     // Add main sheets
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sampleOrders), 'Departure_Orders');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sampleProducts), 'Products');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sampleDocuments), 'Documents');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sampleOrders), 'Órdenes_Salida');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sampleProducts), 'Productos');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sampleDocuments), 'Documentos');
 
     // Add reference sheets
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(clientsReference), 'Clients_Reference');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(warehousesReference), 'Warehouses_Reference');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(productsReference), 'Products_Reference');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(documentTypesReference), 'DocumentTypes_Reference');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(instructions), 'Instructions');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(clientsReference), 'Clientes_Referencia');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(warehousesReference), 'Almacenes_Referencia');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(productsReference), 'Productos_Referencia');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(documentTypesReference), 'TiposDocumento_Referencia');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(instructions), 'Instrucciones');
 
     // Generate buffer
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
