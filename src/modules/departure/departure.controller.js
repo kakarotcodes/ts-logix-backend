@@ -1531,7 +1531,7 @@ async function getComprehensiveDepartureOrders(req, res) {
       warehouseId,
       clientId,
       page = 1,
-      limit = 50
+      limit = 20
     } = req.query;
 
     // Use organisation from query or user's organisation

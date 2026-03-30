@@ -173,7 +173,9 @@ async function getAllEntryOrders(
   entryOrderNo = null,
   userRole = null,
   userId = null,
-  filters = {}
+  filters = {},
+  page = 1,
+  limit = 20
 ) {
   // Build base where conditions
   const whereConds = {};
@@ -212,8 +214,18 @@ async function getAllEntryOrders(
     whereConds.order_status = { in: filters.statuses };
   }
 
+  // Pagination calculations
+  const skip = (page - 1) * limit;
+
+  // Get total count for pagination
+  const totalCount = await prisma.entryOrder.count({
+    where: whereConds
+  });
+
   const orders = await prisma.entryOrder.findMany({
     where: whereConds,
+    skip: skip,
+    take: limit,
     orderBy: [
       { order: { created_at: "desc" } }
     ],
@@ -271,10 +283,21 @@ async function getAllEntryOrders(
     },
   });
 
+  // Calculate pagination metadata
+  const totalPages = Math.ceil(totalCount / limit);
+
   // Optionally, add summary or transform as needed
   return {
     success: true,
     data: orders,
+    pagination: {
+      current_page: page,
+      per_page: limit,
+      total_items: totalCount,
+      total_pages: totalPages,
+      has_next_page: page < totalPages,
+      has_previous_page: page > 1
+    },
     count: orders.length,
   };
 }

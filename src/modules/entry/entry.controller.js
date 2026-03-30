@@ -540,19 +540,26 @@ async function getAllEntryOrders(req, res) {
       filters.client_id = clientId;
     }
 
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+
     const result = await entryService.getAllEntryOrders(
       filterOrg,
       null, // sortOptions
       null, // entryOrderNo
       userRole,
       req.user?.id,
-      filters
+      filters,
+      page,
+      limit
     );
 
     return res.status(200).json({
       success: result.success,
       data: result.data,
       count: result.count,
+      pagination: result.pagination,
       user_role: userRole,
       filters_applied: {
         organisation_filter: filterOrg ? 'FILTERED' : 'ALL',
