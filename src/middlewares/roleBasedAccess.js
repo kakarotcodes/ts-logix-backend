@@ -312,11 +312,76 @@ function getAccessibleClients() {
   };
 }
 
+// ✅ NEW: Middleware to check if PHARMACIST user is client-restricted
+async function checkClientRestriction(req, res, next) {
+  try {
+    const user = req.user;
+
+    // Only apply to PHARMACIST role
+    if (!user || user.role !== 'PHARMACIST') {
+      req.clientRestriction = {
+        isClientRestricted: false,
+        client_id: null,
+        client_code: null
+      };
+      return next();
+    }
+
+    // Check if this PHARMACIST is linked to a specific client via ClientUser table
+    const clientUser = await prisma.clientUser.findUnique({
+      where: { user_id: user.id },
+      include: {
+        client: {
+          select: {
+            client_id: true,
+            client_code: true,
+            company_name: true,
+            first_names: true,
+            last_name: true
+          }
+        }
+      }
+    });
+
+    if (clientUser && clientUser.client) {
+      // This is a CLIENT PHARMACIST - restrict to their client only
+      req.clientRestriction = {
+        isClientRestricted: true,
+        client_id: clientUser.client_id,
+        client_code: clientUser.client.client_code,
+        client_name: clientUser.client.company_name ||
+                     `${clientUser.client.first_names || ''} ${clientUser.client.last_name || ''}`.trim()
+      };
+      console.log(`ℹ️ Client PHARMACIST detected: ${user.user_id} restricted to client ${clientUser.client.client_code}`);
+    } else {
+      // This is a WAREHOUSE PHARMACIST - no client restriction
+      req.clientRestriction = {
+        isClientRestricted: false,
+        client_id: null,
+        client_code: null
+      };
+      console.log(`ℹ️ Warehouse PHARMACIST detected: ${user.user_id} - full access`);
+    }
+
+    next();
+  } catch (error) {
+    console.error('Error checking client restriction:', error);
+    // On error, fail open with no restriction (safer for warehouse PHARMACIST)
+    req.clientRestriction = {
+      isClientRestricted: false,
+      client_id: null,
+      client_code: null
+    };
+    next();
+  }
+}
+
 module.exports = {
   ROLES,
   hasPermission,
   requireRole,
   checkResourceAccess,
   filterDataByRole,
-  getAccessibleClients
+  getAccessibleClients,
+  checkClientRestriction
 }; 

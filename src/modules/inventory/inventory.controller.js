@@ -435,7 +435,18 @@ async function getInventoryMovementLogs(req, res) {
       });
     }
 
-    const result = await inventoryService.getInventoryMovementLogs(req.query);
+    // ✅ NEW: Pass client restriction from middleware
+    const result = await inventoryService.getInventoryMovementLogs(req.query, req.clientRestriction);
+
+    // ✅ NEW: Add client filtering info to response
+    if (req.clientRestriction?.isClientRestricted) {
+      result.is_client_filtered = true;
+      result.restricted_to_client = {
+        client_id: req.clientRestriction.client_id,
+        client_code: req.clientRestriction.client_code,
+        client_name: req.clientRestriction.client_name
+      };
+    }
 
     return res.json(result);
   } catch (err) {
@@ -495,13 +506,17 @@ async function getQuarantineInventory(req, res) {
 
     // Only warehouse, admin, and pharmacist can access quality control
     if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN" && userRole !== "PHARMACIST") {
-      return res.status(403).json({ 
-        message: "Access denied. Only warehouse staff and pharmacists can access quality control." 
+      return res.status(403).json({
+        message: "Access denied. Only warehouse staff and pharmacists can access quality control."
       });
     }
 
-    const quarantineItems = await inventoryService.getQuarantineInventory(warehouse_id);
-    
+    // ✅ NEW: Pass client restriction from middleware
+    const quarantineItems = await inventoryService.getQuarantineInventory(
+      warehouse_id,
+      req.clientRestriction
+    );
+
     return res.json({
       success: true,
       count: quarantineItems.length,
@@ -511,13 +526,20 @@ async function getQuarantineInventory(req, res) {
         allocator_name: `${item.allocator.first_name || ""} ${item.allocator.last_name || ""}`.trim(),
         warehouse_name: item.cell.warehouse.name,
       })),
+      // ✅ NEW: Indicate if data is client-filtered
+      is_client_filtered: req.clientRestriction?.isClientRestricted || false,
+      restricted_to_client: req.clientRestriction?.isClientRestricted ? {
+        client_id: req.clientRestriction.client_id,
+        client_code: req.clientRestriction.client_code,
+        client_name: req.clientRestriction.client_name
+      } : null,
       message: "Quarantine inventory retrieved successfully",
     });
   } catch (err) {
     console.error("Error fetching quarantine inventory:", err);
-    return res.status(500).json({ 
-      success: false, 
-      message: err.message 
+    return res.status(500).json({
+      success: false,
+      message: err.message
     });
   }
 }
@@ -546,7 +568,13 @@ async function getInventoryByQualityStatus(req, res) {
     // Parse entry_order_ids if provided (comma-separated string)
     const entryOrderIdsArray = entry_order_ids ? entry_order_ids.split(',').map(id => id.trim()).filter(Boolean) : null;
 
-    const inventoryItems = await inventoryService.getInventoryByQualityStatus(quality_status, warehouse_id, entryOrderIdsArray);
+    // ✅ NEW: Pass client restriction from middleware
+    const inventoryItems = await inventoryService.getInventoryByQualityStatus(
+      quality_status,
+      warehouse_id,
+      entryOrderIdsArray,
+      req.clientRestriction
+    );
     
     // Transform data for better readability
     const transformedData = inventoryItems.map(item => ({
@@ -587,6 +615,13 @@ async function getInventoryByQualityStatus(req, res) {
         quality_status: quality_status,
         warehouse_id: warehouse_id || "all",
       },
+      // ✅ NEW: Indicate if data is client-filtered
+      is_client_filtered: req.clientRestriction?.isClientRestricted || false,
+      restricted_to_client: req.clientRestriction?.isClientRestricted ? {
+        client_id: req.clientRestriction.client_id,
+        client_code: req.clientRestriction.client_code,
+        client_name: req.clientRestriction.client_name
+      } : null,
       message: `Inventory with quality status '${quality_status}' retrieved successfully`,
     });
   } catch (err) {

@@ -892,7 +892,7 @@ async function getClientAssignedCells(warehouseId, userId) {
  * Optimized for inventory movement/history table UI
  * Returns only the necessary fields for display with proper pagination
  */
-async function getInventoryMovementLogs(filters = {}) {
+async function getInventoryMovementLogs(filters = {}, clientRestriction = null) {
   const {
     warehouse_id,
     product_id,
@@ -908,6 +908,24 @@ async function getInventoryMovementLogs(filters = {}) {
 
   // Build where clause for filtering
   const where = {};
+
+  // ✅ NEW: Filter by client for client-restricted PHARMACIST users
+  if (clientRestriction && clientRestriction.isClientRestricted && clientRestriction.client_id) {
+    where.OR = [
+      // Entry order movements
+      {
+        entry_order: {
+          client_id: clientRestriction.client_id
+        }
+      },
+      // Departure order movements
+      {
+        departure_order: {
+          client_id: clientRestriction.client_id
+        }
+      }
+    ];
+  }
 
   // Filter by movement type
   if (movement_type) {
@@ -1271,7 +1289,7 @@ async function createAuditLog(userId, action, entityType, entityId, description,
 }
 
 // ✅ NEW: Get inventory allocations in quarantine for quality control
-async function getQuarantineInventory(warehouseId = null) {
+async function getQuarantineInventory(warehouseId = null, clientRestriction = null) {
   const where = {
     quality_status: "CUARENTENA",
     status: "ACTIVE"
@@ -1280,6 +1298,15 @@ async function getQuarantineInventory(warehouseId = null) {
   if (warehouseId) {
     where.cell = {
       warehouse_id: warehouseId
+    };
+  }
+
+  // ✅ NEW: Filter by client for client-restricted PHARMACIST users
+  if (clientRestriction && clientRestriction.isClientRestricted && clientRestriction.client_id) {
+    where.entry_order_product = {
+      entry_order: {
+        client_id: clientRestriction.client_id
+      }
     };
   }
 
@@ -1337,7 +1364,7 @@ async function getQuarantineInventory(warehouseId = null) {
 }
 
 // ✅ NEW: Get inventory allocations by any quality status (dynamic)
-async function getInventoryByQualityStatus(qualityStatus, warehouseId = null, entryOrderIds = null) {
+async function getInventoryByQualityStatus(qualityStatus, warehouseId = null, entryOrderIds = null, clientRestriction = null) {
   // Validate quality status
   const validStatuses = ["CUARENTENA", "APROBADO", "DEVOLUCIONES", "CONTRAMUESTRAS", "RECHAZADOS"];
   if (!validStatuses.includes(qualityStatus)) {
@@ -1361,6 +1388,16 @@ async function getInventoryByQualityStatus(qualityStatus, warehouseId = null, en
   if (entryOrderIds && Array.isArray(entryOrderIds) && entryOrderIds.length > 0) {
     where.entry_order_product = {
       entry_order_id: { in: entryOrderIds }
+    };
+  }
+
+  // ✅ NEW: Filter by client for client-restricted PHARMACIST users
+  if (clientRestriction && clientRestriction.isClientRestricted && clientRestriction.client_id) {
+    where.entry_order_product = {
+      ...where.entry_order_product,
+      entry_order: {
+        client_id: clientRestriction.client_id
+      }
     };
   }
 

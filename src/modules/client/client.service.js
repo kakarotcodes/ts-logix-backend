@@ -486,7 +486,8 @@ async function createClient(clientData, cellAssignmentData = {}) {
           email: userData.email || `${username}@${cleanedData.email.split('@')[1]}`,
           first_name: userData.name.split(' ')[0] || 'User',
           last_name: userData.name.split(' ').slice(1).join(' ') || '',
-          is_primary: false // SUB-USER - Individual client user
+          is_primary: false, // SUB-USER - Individual client user
+          role: userData.role || 'CLIENT' // ✅ Include role from frontend (CLIENT or PHARMACIST)
         });
       }
     }
@@ -541,13 +542,27 @@ async function createClient(clientData, cellAssignmentData = {}) {
         // Hash password
         const hashedPassword = await bcrypt.hash(userData.password, 10);
 
+        // ✅ Determine role: CLIENT or PHARMACIST (default to CLIENT if not specified)
+        const roleName = userData.role && (userData.role === 'CLIENT' || userData.role === 'PHARMACIST')
+          ? userData.role
+          : 'CLIENT';
+
+        // Get the role from database
+        const userRole = await tx.role.findUnique({
+          where: { name: roleName }
+        });
+
+        if (!userRole) {
+          throw new Error(`${roleName} role not found in database`);
+        }
+
         // Create user account
         const newUser = await tx.user.create({
           data: {
             user_id: userData.username,
             email: userData.email,
             password_hash: hashedPassword,
-            role: { connect: { role_id: clientRole.role_id } },
+            role: { connect: { role_id: userRole.role_id } },
             organisation: { connect: { organisation_id: creator.organisation_id } },
             first_name: userData.first_name,
             last_name: userData.last_name
