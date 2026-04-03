@@ -536,25 +536,46 @@ async function createClient(clientData, cellAssignmentData = {}) {
         }
       });
 
-      // ✅ FIX: Create ClientUser records for proper user-client relationship
-      const createdClientUsers = [];
-      for (const userData of clientUsers) {
-        // Hash password
-        const hashedPassword = await bcrypt.hash(userData.password, 10);
+      // ✅ PERFORMANCE FIX: Optimize user creation with parallel operations
 
-        // ✅ Determine role: CLIENT or PHARMACIST (default to CLIENT if not specified)
+      // Step 1: Get all unique roles needed (fetch once)
+      const uniqueRoles = [...new Set(clientUsers.map(u =>
+        u.role && (u.role === 'CLIENT' || u.role === 'CLIENT_PHARMACIST') ? u.role : 'CLIENT'
+      ))];
+
+      const rolePromises = uniqueRoles.map(roleName =>
+        tx.role.findUnique({ where: { name: roleName } })
+      );
+      const rolesData = await Promise.all(rolePromises);
+
+      // Create role map for quick lookup
+      const roleMap = new Map();
+      rolesData.forEach((role, idx) => {
+        if (role) roleMap.set(uniqueRoles[idx], role);
+      });
+
+      // Validate all roles exist
+      for (const roleName of uniqueRoles) {
+        if (!roleMap.has(roleName)) {
+          throw new Error(`${roleName} role not found in database`);
+        }
+      }
+
+      // Step 2: Hash all passwords in parallel (MASSIVE speedup!)
+      const passwordHashPromises = clientUsers.map(userData =>
+        bcrypt.hash(userData.password, 10)
+      );
+      const hashedPasswords = await Promise.all(passwordHashPromises);
+
+      // Step 3: Create all users in parallel
+      const createdClientUsers = [];
+      const userCreatePromises = clientUsers.map(async (userData, index) => {
         const roleName = userData.role && (userData.role === 'CLIENT' || userData.role === 'CLIENT_PHARMACIST')
           ? userData.role
           : 'CLIENT';
 
-        // Get the role from database
-        const userRole = await tx.role.findUnique({
-          where: { name: roleName }
-        });
-
-        if (!userRole) {
-          throw new Error(`${roleName} role not found in database`);
-        }
+        const userRole = roleMap.get(roleName);
+        const hashedPassword = hashedPasswords[index];
 
         // Create user account
         const newUser = await tx.user.create({
@@ -582,15 +603,17 @@ async function createClient(clientData, cellAssignmentData = {}) {
           }
         });
 
-        createdClientUsers.push({
+        return {
           clientUser,
           user: newUser,
           credentials: {
             username: userData.username,
             password: userData.password
           }
-        });
-      }
+        };
+      });
+
+      createdClientUsers.push(...await Promise.all(userCreatePromises));
 
       // ✅ OPTIMIZATION 4: Bulk create cell assignments
       const finalNotes = cellAssignmentData.notes || `Cell assigned during client creation for ${client.client_type === "JURIDICO" ? client.company_name : `${client.first_names} ${client.last_name}`}`;
