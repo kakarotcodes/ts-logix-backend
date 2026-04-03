@@ -481,7 +481,34 @@ async function processOrdersInBatches(orderHeaders, orderProducts, orderDocument
           const orderProductList = productsByOrder.get(orderHeader.order_index) || [];
           const departureOrder = createdDepartureOrders[idx];
 
+          // ✅ FIX: Group duplicate products by product_code and lot_series
+          // Combine quantities if the same product appears multiple times in the Excel file
+          const groupedProducts = new Map();
+
           orderProductList.forEach(product => {
+            // Create unique key: product_code + lot_series
+            const productKey = `${product.product_code}_${product.lot_series || 'NO_LOT'}`;
+
+            if (groupedProducts.has(productKey)) {
+              // Product exists - add quantities
+              const existing = groupedProducts.get(productKey);
+              existing.requested_quantity += product.requested_quantity;
+              existing.requested_packages += product.requested_packages;
+            } else {
+              // New product - add to map
+              groupedProducts.set(productKey, {
+                product_code: product.product_code,
+                product_id: product.product_id,
+                lot_series: product.lot_series || null,
+                requested_quantity: product.requested_quantity,
+                requested_packages: product.requested_packages,
+                packaging_type: product.packaging_type,
+              });
+            }
+          });
+
+          // Convert grouped products to database records
+          groupedProducts.forEach(product => {
             // Map packaging type to valid PresentationType enum
             const presentationMap = {
               'NORMAL': 'CAJA',
@@ -500,7 +527,7 @@ async function processOrdersInBatches(orderHeaders, orderProducts, orderDocument
               departure_order_id: departureOrder.departure_order_id,
               product_code: product.product_code,
               product_id: product.product_id,
-              lot_series: product.lot_series || null,
+              lot_series: product.lot_series,
               requested_quantity: product.requested_quantity,
               requested_packages: product.requested_packages,
               requested_pallets: Math.ceil(product.requested_quantity / 200),
