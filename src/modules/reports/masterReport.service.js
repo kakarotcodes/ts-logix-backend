@@ -239,7 +239,7 @@ function buildWhereConditions(filters, userContext) {
   }
 
   // Role-based filtering
-  if (userContext.userRole === 'CLIENT') {
+  if (userContext.userRole === 'CLIENT' || userContext.userRole === 'CLIENT_PHARMACIST') {
     const clientFilter = {
       OR: [
         {
@@ -529,7 +529,7 @@ async function getUnallocatedInventory(filters, userContext) {
   }
 
   // Role-based filtering
-  if (userContext.userRole === 'CLIENT') {
+  if (userContext.userRole === 'CLIENT' || userContext.userRole === 'CLIENT_PHARMACIST') {
     if (!whereConditions.entry_order_product) {
       whereConditions.entry_order_product = {};
     }

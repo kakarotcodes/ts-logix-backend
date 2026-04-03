@@ -100,7 +100,7 @@ const createProduct = async (data, createdByUserId = null, userRole = null) => {
   });
   
   // ✅ NEW: Auto-assign product to CLIENT who created it
-  if (userRole === "CLIENT" && createdByUserId) {
+  if ((userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") && createdByUserId) {
     try {
       // Find the client associated with this user using the new ClientUser table
       const clientUser = await prisma.clientUser.findFirst({
@@ -143,7 +143,7 @@ const getAllProducts = async (filters = {}, userRole = null, userId = null) => {
   const where = {};
   
   // ✅ NEW: Client-specific filtering
-  if (userRole === "CLIENT" && userId) {
+  if ((userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") && userId) {
     // For CLIENT role, only show products assigned to this client
     const clientUser = await prisma.clientUser.findFirst({
       where: { 
@@ -243,7 +243,7 @@ const getAllProducts = async (filters = {}, userRole = null, userId = null) => {
       },
       temperature_range: true,
       // Removed deprecated fields: product_line, group, active_state
-      clientAssignments: userRole === "CLIENT" ? {
+      clientAssignments: (userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") ? {
         where: { is_active: true },
         include: {
           client: {

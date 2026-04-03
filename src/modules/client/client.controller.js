@@ -1067,7 +1067,7 @@ async function getClientUsers(req, res) {
     }
 
     // If user is CLIENT role, verify they belong to this client
-    if (userRole === "CLIENT") {
+    if (userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") {
       const clientUser = await clientService.getClientByUserId(userId);
       if (!clientUser || clientUser.client_id !== client_id) {
         return res.status(403).json({

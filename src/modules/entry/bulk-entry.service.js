@@ -242,7 +242,7 @@ async function validateEntryOrdersWithMapping(entryOrders, userId, userRole) {
   // Get reference data for name-to-ID mapping
   const [origins, suppliers, users] = await Promise.all([
     prisma.origin.findMany({ select: { origin_id: true, name: true } }),
-    userRole === 'CLIENT' ?
+    userRole === 'CLIENT' || userRole === 'CLIENT_PHARMACIST' ?
       // Get client-assigned suppliers
       (async () => {
         const clientUser = await prisma.clientUser.findFirst({
@@ -407,7 +407,7 @@ async function validateProductsWithMapping(products, entryOrders, userId, userRo
   // Get reference data based on user role
   let availableProducts, availableSuppliers;
 
-  if (userRole === 'CLIENT') {
+  if (userRole === 'CLIENT' || userRole === 'CLIENT_PHARMACIST') {
     const clientUser = await prisma.clientUser.findFirst({
       where: { user_id: userId, is_active: true },
       include: { client: true }
@@ -785,7 +785,7 @@ async function generateBulkEntryTemplate(userId, userRole) {
     // Get reference data based on user role (following existing pattern)
     let origins, documentTypes, products, suppliers, users, temperatureRanges, presentationOptions;
 
-    if (userRole === 'CLIENT') {
+    if (userRole === 'CLIENT' || userRole === 'CLIENT_PHARMACIST') {
       const clientUser = await prisma.clientUser.findFirst({
         where: { user_id: userId, is_active: true },
         include: { client: true }

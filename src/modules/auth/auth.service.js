@@ -89,14 +89,22 @@ async function loginUser(userId, plainPassword, ipAddress = null, userAgent = nu
     // ✅ Find user by `userId` and include related data
     const user = await prisma.user.findUnique({
       where: { user_id: userId },
-      include: { 
+      include: {
         role: true, // Include role to get role name
         clientUserAccounts: {
           include: {
-            client: true // Include client data for CLIENT role users
+            client: true // Include client data for CLIENT and CLIENT_PHARMACIST role users
           }
         }
       },
+    });
+
+    console.log('🔍 DEBUG USER QUERY:', {
+      userId,
+      found: !!user,
+      role: user?.role?.name,
+      hasClientUserAccount: !!user?.clientUserAccounts,
+      clientUserAccountData: user?.clientUserAccounts
     });
 
     if (!user) {
@@ -145,18 +153,24 @@ async function loginUser(userId, plainPassword, ipAddress = null, userAgent = nu
       throw new Error("Invalid userID or password.");
     }
 
-    // ✅ Get username and client data for CLIENT role users
+    // ✅ Get username and client data for CLIENT and CLIENT_PHARMACIST role users
     let username = user.user_id; // Default to user_id
     let clientData = null;
 
-    if (user.role.name === 'CLIENT' && user.clientUserAccounts.length > 0) {
-      // Get the client user account (there should be only one for a user)
-      const clientUserAccount = user.clientUserAccounts[0];
+    console.log('🔍 DEBUG LOGIN:', {
+      userId: user.user_id,
+      role: user.role.name,
+      hasClientUserAccount: !!user.clientUserAccounts
+    });
+
+    if ((user.role.name === 'CLIENT' || user.role.name === 'CLIENT_PHARMACIST') && user.clientUserAccounts) {
+      // Get the client user account (singular object, not array)
+      const clientUserAccount = user.clientUserAccounts;
       username = clientUserAccount.username; // Use the client username
-      
+
       if (clientUserAccount.client) {
         const client = clientUserAccount.client;
-        
+
         // Prepare client name data based on client type
         if (client.client_type === 'JURIDICO') {
           clientData = {
@@ -191,11 +205,14 @@ async function loginUser(userId, plainPassword, ipAddress = null, userAgent = nu
       id: user.id,
     };
 
-    // Add client-specific data to JWT for CLIENT users
-    if (user.role.name === 'CLIENT' && user.clientUserAccounts.length > 0) {
-      const clientUserAccount = user.clientUserAccounts[0];
+    // Add client-specific data to JWT for CLIENT and CLIENT_PHARMACIST users
+    if ((user.role.name === 'CLIENT' || user.role.name === 'CLIENT_PHARMACIST') && user.clientUserAccounts) {
+      const clientUserAccount = user.clientUserAccounts;
       tokenData.client_id = clientUserAccount.client_id;
       tokenData.is_primary_user = clientUserAccount.is_primary;
+      console.log('✅ Added client_id to JWT:', clientUserAccount.client_id);
+    } else {
+      console.log('⚠️  NO client_id added to JWT - condition not met');
     }
 
     const token = jwt.sign(tokenData, SECRET_KEY);
@@ -209,13 +226,13 @@ async function loginUser(userId, plainPassword, ipAddress = null, userAgent = nu
       id: user.id
     };
 
-    // ✅ Add client data for CLIENT role users
+    // ✅ Add client data for CLIENT and CLIENT_PHARMACIST role users
     if (clientData) {
       response.client = clientData;
 
-      // ✅ Add is_primary_user flag for CLIENT users
-      if (user.role.name === 'CLIENT' && user.clientUserAccounts.length > 0) {
-        response.is_primary_user = user.clientUserAccounts[0].is_primary;
+      // ✅ Add is_primary_user flag for CLIENT and CLIENT_PHARMACIST users
+      if ((user.role.name === 'CLIENT' || user.role.name === 'CLIENT_PHARMACIST') && user.clientUserAccounts) {
+        response.is_primary_user = user.clientUserAccounts.is_primary;
       }
     }
 

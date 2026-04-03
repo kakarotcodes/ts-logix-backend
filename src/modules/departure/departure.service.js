@@ -74,7 +74,7 @@ async function getDepartureFormFields(userRole = null, userId = null) {
     // ✅ NEW: Build client-specific filtering for users (same as entry order)
     let usersPromise;
 
-    if (userRole === "CLIENT" && userId) {
+    if ((userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") && userId) {
       // For CLIENT users, get client_users_data from their client record
       const clientUser = await prisma.clientUser.findFirst({
         where: { 
@@ -391,7 +391,7 @@ async function getProductsWithInventory(warehouseId = null, userRole = null, use
     }
 
     // ✅ NEW: Filter by client product assignments for CLIENT users
-    if (userRole === "CLIENT" && userId) {
+    if ((userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") && userId) {
       // Find the client associated with this user
       const clientUser = await prisma.clientUser.findFirst({
         where: { 
@@ -1045,7 +1045,7 @@ async function getAvailableCellsForProduct(
     }
 
     // ✅ NEW: If user is a CLIENT, only show inventory in cells assigned to them
-    if (userRole === "CLIENT" && userId) {
+    if ((userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") && userId) {
       // Get the client record for this user
       const clientUser = await prisma.user.findUnique({
         where: { id: userId },
@@ -2745,7 +2745,7 @@ async function createComprehensiveDepartureOrder(comprehensiveData) {
     } else {
       // ✅ FIXED: Only enforce client_id/customer_id requirement for CLIENT role
       // WAREHOUSE_INCHARGE and ADMIN can create orders without specifying client/customer
-      if (userRole === 'CLIENT') {
+      if (userRole === 'CLIENT' || userRole === 'CLIENT_PHARMACIST' || userRole === 'CLIENT_PHARMACIST') {
         throw new Error("client_id is required for CLIENT role users");
       }
       // For WAREHOUSE_INCHARGE and ADMIN, client_id and customer_id are optional
@@ -3049,7 +3049,7 @@ async function getComprehensiveDepartureOrders(organisationId = null, userRole =
     }
 
     // Role-based filtering for CLIENT users
-    if (userRole === 'CLIENT') {
+    if (userRole === 'CLIENT' || userRole === 'CLIENT_PHARMACIST' || userRole === 'CLIENT_PHARMACIST') {
       // CLIENT users can only see their own orders
       whereClause.created_by = userId;
     }
@@ -3450,7 +3450,7 @@ async function getComprehensiveDepartureOrders(organisationId = null, userRole =
       filters_applied: {
         organisation_id: organisationId,
         user_role: userRole,
-        user_id: userRole === 'CLIENT' ? userId : null,
+        user_id: userRole === 'CLIENT' || userRole === 'CLIENT_PHARMACIST' ? userId : null,
         additional_filters: filters,
       },
       pagination: {
@@ -3555,7 +3555,7 @@ async function getComprehensiveDepartureOrderByNumber(orderNumber, userRole = nu
     };
 
     // Role-based filtering
-    if (userRole === 'CLIENT') {
+    if (userRole === 'CLIENT' || userRole === 'CLIENT_PHARMACIST' || userRole === 'CLIENT_PHARMACIST') {
       // CLIENT users can only see their own orders
       whereClause.created_by = userId;
     }
@@ -3889,7 +3889,7 @@ async function getDepartureOrderAuditTrail(departureOrderId, userRole = null, us
       where: {
         departure_order_id: departureOrderId,
         // Role-based filtering
-        ...(userRole === 'CLIENT' && { created_by: userId }),
+        ...(userRole === 'CLIENT' || userRole === 'CLIENT_PHARMACIST' && { created_by: userId }),
         // Organisation filtering
         ...(organisationId && {
           order: {
@@ -5217,7 +5217,7 @@ async function getApprovedDepartureOrdersForDispatch(warehouseId = null, userRol
     }
 
     // ✅ ROLE-BASED ACCESS CONTROL
-    if (userRole === 'CLIENT') {
+    if (userRole === 'CLIENT' || userRole === 'CLIENT_PHARMACIST' || userRole === 'CLIENT_PHARMACIST') {
       // CLIENT users can only see their own departure orders
       whereClause.created_by = userId;
     }
@@ -6247,7 +6247,7 @@ async function getRecalculatedFifoInventoryForDeparture(departureOrderId, produc
     };
 
     // ✅ Filter by client assignments for CLIENT users
-    if (userRole === "CLIENT" && userId) {
+    if ((userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") && userId) {
       const clientUser = await prisma.clientUser.findFirst({
         where: { 
           user_id: userId,
@@ -6431,7 +6431,7 @@ async function getWarehouseDispatchSummary(userRole = null, userId = null) {
     };
 
     // ✅ NEW: Filter by client assignments for CLIENT users
-    if (userRole === "CLIENT" && userId) {
+    if ((userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") && userId) {
       const clientUser = await prisma.clientUser.findFirst({
         where: { 
           user_id: userId,

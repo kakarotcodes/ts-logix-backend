@@ -8,65 +8,902 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// Enhanced role system for warehouse management
+model Role {
+  role_id String   @id @default(uuid()) @map("role_id")
+  name    RoleName @unique
+  users   User[]
+
+  @@map("roles")
+}
+
+model User {
+  created_at                DateTime                   @default(now())
+  active_state_id           String?
+  email                     String                     @unique
+  organisation_id           String
+  user_id                   String                     @unique @map("user_id")
+  password_hash             String                     @map("password_hash")
+  role_id                   String?
+  id                        String                     @id @default(uuid()) @map("id")
+  first_name                String?
+  last_name                 String?
+  middle_name               String?
+  assigned_clients          String[]                   @default([])
+  cellAssignments           CellAssignment[]           @relation("AssignedByUser")
+  clientCellAssignments     ClientCellAssignment[]     @relation("ClientCellAssigner")
+  productAssignments        ClientProductAssignment[]  @relation("ProductAssigner")
+  supplierAssignments       ClientSupplierAssignment[] @relation("SupplierAssigner")
+  createdClientUsers        ClientUser[]               @relation("ClientUserCreator")
+  clientUserAccounts        ClientUser?                @relation("ClientUserAccount")
+  createdClients            Client[]                   @relation("ClientCreator")
+  departureAllocations      DepartureAllocation[]      @relation("DepartureAllocator")
+  createdDepartureOrders    DepartureOrder[]           @relation("DepartureOrderCreator")
+  dispatchedDepartureOrders DepartureOrder[]           @relation("DepartureOrderDispatcher")
+  reviewedDepartureOrders   DepartureOrder[]           @relation("DepartureOrderReviewer")
+  audits                    EntryOrderAudit[]          @relation("UserAudits")
+  createdEntryOrders        EntryOrder[]               @relation("EntryOrderCreator")
+  reviewedEntryOrders       EntryOrder[]               @relation("EntryOrderReviewer")
+  createdInventory          Inventory[]                @relation("InventoryCreator")
+  modifiedInventory         Inventory[]                @relation("InventoryLastModifier")
+  inventoryAllocations      InventoryAllocation[]      @relation("InventoryAllocator")
+  modifiedAllocations       InventoryAllocation[]      @relation("InventoryModifier")
+  inventoryLogs             InventoryLog[]
+  orders                    Order[]                    @relation("OrderCreatedBy")
+  qualityTransitions        QualityControlTransition[] @relation("QualityTransitionPerformer")
+  createdSuppliers          Supplier[]                 @relation("SupplierCreatedBy")
+  systemAudits              SystemAuditLog[]           @relation("UserSystemAudits")
+  active_state              ActiveState?               @relation(fields: [active_state_id], references: [state_id])
+  organisation              Organisation               @relation(fields: [organisation_id], references: [organisation_id])
+  role                      Role?                      @relation(fields: [role_id], references: [role_id])
+
+  @@map("users")
+}
+
+model Organisation {
+  organisation_id String   @id @default(uuid()) @map("organisation_id")
+  name            String
+  address         Json?
+  tax_id          String?
+  created_at      DateTime @default(now())
+  orders          Order[]
+  users           User[]
+
+  @@map("organisations")
+}
+
+model ActiveState {
+  state_id String     @id @default(uuid()) @map("state_id")
+  name     String     @unique
+  Client   Client[]
+  Customer Customer[]
+  Product  Product[]
+  User     User[]
+
+  @@map("active_states")
+}
+
+model Origin {
+  origin_id   String       @id @default(uuid()) @map("origin_id")
+  name        String       @unique
+  type        OriginType
+  description String?
+  EntryOrder  EntryOrder[]
+
+  @@map("origins")
+}
+
+model DocumentType {
+  document_type_id String            @id @default(uuid()) @map("document_type_id")
+  name             String            @unique
+  type             DocumentTypeEntry
+  description      String?
+  EntryOrder       EntryOrder[]
+
+  @@map("document_types")
+}
+
+model DepartureDocumentType {
+  document_type_id String                @id @default(uuid()) @map("document_type_id")
+  name             String                @unique
+  type             DocumentTypeDeparture
+  description      String?
+
+  @@map("departure_document_types")
+}
+
+model ExitOption {
+  exit_option_id String           @id @default(uuid()) @map("exit_option_id")
+  name           String           @unique
+  DepartureOrder DepartureOrder[]
+
+  @@map("exit_options")
+}
+
+model CustomerType {
+  customer_type_id String     @id @default(uuid()) @map("customer_type_id")
+  name             String     @unique
+  discount_rate    Decimal?   @db.Decimal(5, 2)
+  Customer         Customer[]
+
+  @@map("customer_types")
+}
+
+model Label {
+  label_id       String           @id @default(uuid()) @map("label_id")
+  name           String           @unique
+  DepartureOrder DepartureOrder[]
+
+  @@map("labels")
+}
+
+model ProductLine {
+  product_line_id String    @id @default(uuid()) @map("product_line_id")
+  name            String    @unique
+  Product         Product[]
+
+  @@map("product_lines")
+}
+
+model GroupName {
+  group_id         String    @id @default(uuid()) @map("group_id")
+  name             String    @unique
+  product_category String?
+  Product          Product[]
+
+  @@map("group_names")
+}
+
+model ProductCategory {
+  category_id    String                @id @default(uuid()) @map("category_id")
+  name           String                @unique
+  description    String?
+  created_at     DateTime              @default(now())
+  subcategories1 ProductSubCategory1[]
+  products       Product[]
+
+  @@map("product_categories")
+}
+
+model ProductSubCategory1 {
+  subcategory1_id String                @id @default(uuid()) @map("subcategory1_id")
+  name            String
+  description     String?
+  category_id     String
+  created_at      DateTime              @default(now())
+  category        ProductCategory       @relation(fields: [category_id], references: [category_id])
+  subcategories2  ProductSubCategory2[]
+  products        Product[]
+
+  @@unique([category_id, name], name: "category_subcategory1_unique")
+  @@map("product_subcategories1")
+}
+
+model ProductSubCategory2 {
+  subcategory2_id String              @id @default(uuid()) @map("subcategory2_id")
+  name            String
+  description     String?
+  subcategory1_id String
+  created_at      DateTime            @default(now())
+  subcategory1    ProductSubCategory1 @relation(fields: [subcategory1_id], references: [subcategory1_id])
+  products        Product[]
+
+  @@unique([subcategory1_id, name], name: "subcategory1_subcategory2_unique")
+  @@map("product_subcategories2")
+}
+
+model Country {
+  country_id String     @id @default(uuid()) @map("country_id")
+  name       String     @unique
+  Supplier   Supplier[]
+
+  @@map("countries")
+}
+
+model TemperatureRange {
+  temperature_range_id String    @id @default(uuid()) @map("temperature_id")
+  range                String    @unique
+  min_celsius          Int?
+  max_celsius          Int?
+  Product              Product[]
+
+  @@map("temperature_ranges")
+}
+
+model Supplier {
+  created_at         DateTime                   @default(now())
+  supplier_id        String                     @id @default(uuid()) @map("supplier_id")
+  category           String?
+  company_name       String
+  supplier_code      String?
+  tax_id             String?
+  registered_address String?
+  city               String?
+  country_id         String?
+  contact_no         String?
+  contact_person     String?
+  notes              String?
+  created_by         String?
+  name               String?
+  address            String?
+  email              String?
+  phone              String?
+  ruc                String?
+  clientAssignments  ClientSupplierAssignment[]
+  entryOrderProducts EntryOrderProduct[]
+  country            Country?                   @relation(fields: [country_id], references: [country_id])
+  createdBy          User?                      @relation("SupplierCreatedBy", fields: [created_by], references: [id])
+
+  @@map("suppliers")
+}
+
+model Customer {
+  customer_id     String           @id @default(uuid()) @map("customer_id")
+  name            String?
+  type_id         String?
+  billing_address Json?
+  active_state_id String?
+  created_at      DateTime?        @default(now())
+  active_state    ActiveState?     @relation(fields: [active_state_id], references: [state_id])
+  type            CustomerType?    @relation(fields: [type_id], references: [customer_type_id])
+  DepartureOrder  DepartureOrder[]
+
+  @@index([type_id], map: "idx_customer_type")
+  @@map("customers")
+}
+
+model Client {
+  client_id           String                     @id @default(uuid()) @map("client_id")
+  client_type         ClientType                 @map("client_type")
+  client_code         String?                    @unique @map("client_code")
+  email               String?
+  address             String?
+  phone               String?
+  cell_phone          String?
+  active_state_id     String?
+  created_at          DateTime                   @default(now())
+  updated_at          DateTime                   @updatedAt
+  created_by          String
+  company_name        String?
+  company_type        CompanyType?
+  establishment_type  EstablishmentType?         @default(SELECCIONAR)
+  ruc                 String?
+  first_names         String?
+  last_name           String?
+  mothers_last_name   String?
+  individual_id       String?
+  date_of_birth       DateTime?
+  cellAssignments     ClientCellAssignment[]
+  productAssignments  ClientProductAssignment[]
+  supplierAssignments ClientSupplierAssignment[]
+  clientUsers         ClientUser[]               @relation("ClientUsers")
+  active_state        ActiveState?               @relation(fields: [active_state_id], references: [state_id])
+  creator             User                       @relation("ClientCreator", fields: [created_by], references: [id])
+  departureOrders     DepartureOrder[]           @relation("ClientDepartureOrders")
+  entryOrders         EntryOrder[]
+
+  @@index([client_type], map: "idx_client_type")
+  @@index([company_type], map: "idx_client_company_type")
+  @@index([establishment_type], map: "idx_client_establishment_type")
+  @@index([active_state_id], map: "idx_client_active_state")
+  @@index([created_by], map: "idx_client_created_by")
+  @@map("clients")
+}
+
+model ClientUser {
+  client_user_id String   @id @default(uuid()) @map("client_user_id")
+  client_id      String   @map("client_id")
+  user_id        String   @unique @map("user_id")
+  username       String   @unique @map("username")
+  is_primary     Boolean  @default(false) @map("is_primary")
+  is_active      Boolean  @default(true) @map("is_active")
+  created_at     DateTime @default(now())
+  created_by     String   @map("created_by")
+  notes          String?
+  client         Client   @relation("ClientUsers", fields: [client_id], references: [client_id], onDelete: Cascade)
+  creator        User     @relation("ClientUserCreator", fields: [created_by], references: [id])
+  user           User     @relation("ClientUserAccount", fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([client_id], map: "idx_client_users_client_id")
+  @@index([is_primary], map: "idx_client_users_is_primary")
+  @@index([is_active], map: "idx_client_users_is_active")
+  @@index([created_by], map: "idx_client_users_created_by")
+  @@map("client_users")
+}
+
+model ClientCellAssignment {
+  assignment_id String        @id @default(uuid()) @map("assignment_id")
+  client_id     String        @map("client_id")
+  cell_id       String        @map("cell_id")
+  warehouse_id  String        @map("warehouse_id")
+  assigned_at   DateTime      @default(now())
+  assigned_by   String
+  is_active     Boolean       @default(true)
+  priority      Int?          @default(1)
+  notes         String?
+  max_capacity  Decimal?      @db.Decimal(10, 2)
+  assignedBy    User          @relation("ClientCellAssigner", fields: [assigned_by], references: [id])
+  cell          WarehouseCell @relation(fields: [cell_id], references: [id])
+  client        Client        @relation(fields: [client_id], references: [client_id], onDelete: Cascade)
+  warehouse     Warehouse     @relation(fields: [warehouse_id], references: [warehouse_id])
+
+  @@unique([client_id, cell_id], name: "client_cell_unique")
+  @@index([client_id], map: "idx_client_assignments")
+  @@index([cell_id], map: "idx_cell_client_assignments")
+  @@index([warehouse_id], map: "idx_warehouse_client_assignments")
+  @@map("client_cell_assignments")
+}
+
+model ClientProductAssignment {
+  assignment_id       String   @id @default(uuid()) @map("assignment_id")
+  client_id           String   @map("client_id")
+  product_id          String   @map("product_id")
+  assigned_at         DateTime @default(now())
+  assigned_by         String
+  is_active           Boolean  @default(true)
+  client_product_code String?
+  client_price        Decimal? @db.Decimal(10, 2)
+  notes               String?
+  max_order_quantity  Int?
+  min_order_quantity  Int?
+  assignedBy          User     @relation("ProductAssigner", fields: [assigned_by], references: [id])
+  client              Client   @relation(fields: [client_id], references: [client_id], onDelete: Cascade)
+  product             Product  @relation(fields: [product_id], references: [product_id], onDelete: Cascade)
+
+  @@unique([client_id, product_id], name: "client_product_unique")
+  @@index([client_id], map: "idx_client_product_assignments")
+  @@index([product_id], map: "idx_product_client_assignments")
+  @@index([assigned_by], map: "idx_product_assigner")
+  @@index([is_active], map: "idx_client_product_active")
+  @@map("client_product_assignments")
+}
+
+model ClientSupplierAssignment {
+  assignment_id        String   @id @default(uuid()) @map("assignment_id")
+  client_id            String   @map("client_id")
+  supplier_id          String   @map("supplier_id")
+  assigned_at          DateTime @default(now())
+  assigned_by          String
+  is_active            Boolean  @default(true)
+  client_supplier_code String?
+  preferred_supplier   Boolean  @default(false)
+  credit_limit         Decimal? @db.Decimal(10, 2)
+  payment_terms        String?
+  notes                String?
+  primary_contact      String?
+  contact_email        String?
+  contact_phone        String?
+  assignedBy           User     @relation("SupplierAssigner", fields: [assigned_by], references: [id])
+  client               Client   @relation(fields: [client_id], references: [client_id], onDelete: Cascade)
+  supplier             Supplier @relation(fields: [supplier_id], references: [supplier_id], onDelete: Cascade)
+
+  @@unique([client_id, supplier_id], name: "client_supplier_unique")
+  @@index([client_id], map: "idx_client_supplier_assignments")
+  @@index([supplier_id], map: "idx_supplier_client_assignments")
+  @@index([assigned_by], map: "idx_supplier_assigner")
+  @@index([is_active], map: "idx_client_supplier_active")
+  @@index([preferred_supplier], map: "idx_preferred_supplier")
+  @@map("client_supplier_assignments")
+}
+
+model Product {
+  product_id             String                    @id @default(uuid()) @map("product_id")
+  product_code           String                    @unique
+  created_at             DateTime                  @default(now())
+  name                   String
+  category_id            String?
+  subcategory1_id        String?
+  subcategory2_id        String?
+  manufacturer           String?
+  temperature_range_id   String?
+  humidity               String?
+  observations           String?
+  uploaded_documents     Json?
+  product_line_id        String?
+  group_id               String?
+  active_state_id        String?
+  storage_conditions     String?
+  unit_weight            Decimal?                  @db.Decimal(10, 2)
+  unit_volume            Decimal?                  @db.Decimal(10, 2)
+  clientAssignments      ClientProductAssignment[]
+  departureOrderProducts DepartureOrderProduct[]
+  entryOrderProducts     EntryOrderProduct[]
+  inventory              Inventory[]               @relation("ProductInventory")
+  inventoryLogs          InventoryLog[]            @relation("ProductInventoryLogs")
+  active_state           ActiveState?              @relation(fields: [active_state_id], references: [state_id])
+  category               ProductCategory?          @relation(fields: [category_id], references: [category_id])
+  group                  GroupName?                @relation(fields: [group_id], references: [group_id])
+  product_line           ProductLine?              @relation(fields: [product_line_id], references: [product_line_id])
+  subcategory1           ProductSubCategory1?      @relation(fields: [subcategory1_id], references: [subcategory1_id])
+  subcategory2           ProductSubCategory2?      @relation(fields: [subcategory2_id], references: [subcategory2_id])
+  temperature_range      TemperatureRange?         @relation(fields: [temperature_range_id], references: [temperature_range_id])
+
+  @@index([category_id], map: "idx_product_category")
+  @@index([subcategory1_id], map: "idx_product_subcategory1")
+  @@index([subcategory2_id], map: "idx_product_subcategory2")
+  @@index([manufacturer], map: "idx_product_manufacturer")
+  @@map("products")
+}
+
+model Order {
+  status          String          @default("PENDING")
+  created_at      DateTime        @default(now())
+  created_by      String
+  order_id        String          @id @default(uuid()) @map("order_id")
+  order_type      String
+  organisation_id String
+  priority        String?
+  departureOrder  DepartureOrder?
+  entryOrder      EntryOrder?
+  createdBy       User            @relation("OrderCreatedBy", fields: [created_by], references: [id])
+  organisation    Organisation    @relation(fields: [organisation_id], references: [organisation_id])
+
+  @@index([created_at], map: "idx_order_creation")
+  @@map("orders")
+}
+
+model EntryOrder {
+  entry_order_id       String                @id @default(uuid()) @map("entry_order_id")
+  order_id             String                @unique
+  entry_order_no       String                @unique
+  origin_id            String?
+  document_type_id     String?
+  registration_date    DateTime              @default(now())
+  document_date        DateTime?
+  entry_date_time      DateTime?
+  created_by           String
+  client_id            String?
+  order_status         OrderStatusEntry      @default(REVISION)
+  total_volume         Decimal?              @db.Decimal(10, 2)
+  total_weight         Decimal?              @db.Decimal(10, 2)
+  cif_value            Decimal?              @db.Decimal(10, 2)
+  total_pallets        Int?
+  observation          String?
+  uploaded_documents   Json?
+  review_status        ReviewStatus          @default(PENDING)
+  review_comments      String?
+  reviewed_by          String?
+  reviewed_at          DateTime?
+  warehouse_id         String?
+  guide_number         String?
+  audits               EntryOrderAudit[]
+  products             EntryOrderProduct[]
+  client               Client?               @relation(fields: [client_id], references: [client_id])
+  creator              User                  @relation("EntryOrderCreator", fields: [created_by], references: [id])
+  documentType         DocumentType?         @relation(fields: [document_type_id], references: [document_type_id])
+  order                Order                 @relation(fields: [order_id], references: [order_id])
+  origin               Origin?               @relation(fields: [origin_id], references: [origin_id])
+  reviewer             User?                 @relation("EntryOrderReviewer", fields: [reviewed_by], references: [id])
+  warehouse            Warehouse?            @relation(fields: [warehouse_id], references: [warehouse_id])
+  inventoryAllocations InventoryAllocation[]
+  inventoryLogs        InventoryLog[]        @relation("EntryOrderLogs")
+
+  @@map("entry_orders")
+}
+
+model EntryOrderProduct {
+  entry_order_product_id String                @id @default(uuid()) @map("entry_order_product_id")
+  entry_order_id         String                @map("entry_order_id")
+  serial_number          String?
+  supplier_id            String?
+  product_code           String
+  product_id             String
+  lot_series             String?
+  manufacturing_date     DateTime?
+  expiration_date        DateTime?
+  inventory_quantity     Int
+  package_quantity       Int
+  quantity_pallets       Int?
+  presentation           PresentationType      @default(CAJA)
+  guide_number           String?
+  weight_kg              Decimal               @db.Decimal(10, 2)
+  volume_m3              Decimal?              @db.Decimal(10, 2)
+  insured_value          Decimal?              @db.Decimal(10, 2)
+  temperature_range      TemperatureRangeType  @default(AMBIENTE)
+  humidity               String?
+  health_registration    String?
+  entry_order            EntryOrder            @relation(fields: [entry_order_id], references: [entry_order_id])
+  product                Product               @relation(fields: [product_id], references: [product_id])
+  supplier               Supplier?             @relation(fields: [supplier_id], references: [supplier_id])
+  inventoryAllocations   InventoryAllocation[]
+  inventoryLogs          InventoryLog[]
+
+  @@unique([entry_order_id, product_code, lot_series], name: "entry_order_product_unique")
+  @@map("entry_order_products")
+}
+
+model InventoryAllocation {
+  allocation_id          String                     @id @default(uuid()) @map("allocation_id")
+  entry_order_id         String                     @map("entry_order_id")
+  entry_order_product_id String                     @map("entry_order_product_id")
+  inventory_quantity     Int
+  package_quantity       Int
+  quantity_pallets       Int?
+  presentation           PresentationType           @default(PALETA)
+  weight_kg              Decimal                    @db.Decimal(10, 2)
+  volume_m3              Decimal?                   @db.Decimal(10, 2)
+  cell_id                String
+  product_status         ProductStatus              @default(PAL_NORMAL)
+  status_code            Int
+  quality_status         QualityControlStatus       @default(CUARENTENA)
+  allocated_by           String
+  allocated_at           DateTime                   @default(now())
+  last_modified_by       String?
+  last_modified_at       DateTime?
+  guide_number           String?
+  uploaded_documents     Json?
+  observations           String?
+  status                 String                     @default("ACTIVE")
+  departureAllocations   DepartureAllocation[]
+  inventory              Inventory[]
+  allocator              User                       @relation("InventoryAllocator", fields: [allocated_by], references: [id])
+  cell                   WarehouseCell              @relation(fields: [cell_id], references: [id])
+  entry_order            EntryOrder                 @relation(fields: [entry_order_id], references: [entry_order_id])
+  entry_order_product    EntryOrderProduct          @relation(fields: [entry_order_product_id], references: [entry_order_product_id])
+  lastModifier           User?                      @relation("InventoryModifier", fields: [last_modified_by], references: [id])
+  inventoryLogs          InventoryLog[]
+  qualityTransitions     QualityControlTransition[]
+
+  @@map("inventory_allocations")
+}
+
+model DepartureOrder {
+  departure_order_id       String                  @id @default(uuid()) @map("departure_order_id")
+  order_id                 String                  @unique
+  departure_order_no       String                  @unique
+  customer_id              String?
+  client_id                String?
+  document_type_ids        String[]                @default([])
+  registration_date        DateTime                @default(now())
+  document_date            DateTime?
+  departure_date_time      DateTime?
+  created_by               String
+  order_status             OrderStatusDeparture    @default(PENDING)
+  destination_point        String?
+  transport_type           String?
+  carrier_name             String?
+  total_volume             Decimal?                @db.Decimal(10, 2)
+  total_weight             Decimal?                @db.Decimal(10, 2)
+  total_value              Decimal?                @db.Decimal(10, 2)
+  total_pallets            Int?
+  observation              String?
+  dispatch_document_number String?
+  uploaded_documents       Json?
+  review_status            ReviewStatus            @default(PENDING)
+  review_comments          String?
+  reviewed_by              String?
+  reviewed_at              DateTime?
+  dispatch_status          String                  @default("NOT_DISPATCHED")
+  dispatched_by            String?
+  dispatched_at            DateTime?
+  dispatch_notes           String?
+  warehouse_id             String?
+  label_id                 String?
+  exit_option_id           String?
+  departureAllocations     DepartureAllocation[]
+  products                 DepartureOrderProduct[]
+  client                   Client?                 @relation("ClientDepartureOrders", fields: [client_id], references: [client_id])
+  creator                  User                    @relation("DepartureOrderCreator", fields: [created_by], references: [id])
+  customer                 Customer?               @relation(fields: [customer_id], references: [customer_id])
+  dispatcher               User?                   @relation("DepartureOrderDispatcher", fields: [dispatched_by], references: [id])
+  exitOption               ExitOption?             @relation(fields: [exit_option_id], references: [exit_option_id])
+  label                    Label?                  @relation(fields: [label_id], references: [label_id])
+  order                    Order                   @relation(fields: [order_id], references: [order_id])
+  reviewer                 User?                   @relation("DepartureOrderReviewer", fields: [reviewed_by], references: [id])
+  warehouse                Warehouse?              @relation(fields: [warehouse_id], references: [warehouse_id])
+  inventoryLogs            InventoryLog[]          @relation("DepartureOrderLogs")
+
+  @@map("departure_orders")
+}
+
+model DepartureOrderProduct {
+  departure_order_product_id String                @id @default(uuid()) @map("departure_order_product_id")
+  departure_order_id         String                @map("departure_order_id")
+  product_code               String
+  product_id                 String
+  lot_series                 String?
+  requested_quantity         Int
+  requested_packages         Int
+  requested_pallets          Int?
+  presentation               PresentationType      @default(CAJA)
+  requested_weight           Decimal               @db.Decimal(10, 2)
+  requested_volume           Decimal?              @db.Decimal(10, 2)
+  unit_price                 Decimal?              @db.Decimal(10, 2)
+  total_value                Decimal?              @db.Decimal(10, 2)
+  dispatched_quantity        Int                   @default(0)
+  dispatched_packages        Int                   @default(0)
+  dispatched_pallets         Int                   @default(0)
+  dispatched_weight          Decimal               @default(0) @db.Decimal(10, 2)
+  dispatched_volume          Decimal?              @default(0) @db.Decimal(10, 2)
+  remaining_quantity         Int                   @default(0)
+  remaining_packages         Int                   @default(0)
+  remaining_weight           Decimal               @default(0) @db.Decimal(10, 2)
+  temperature_requirement    TemperatureRangeType  @default(AMBIENTE)
+  special_handling           String?
+  delivery_instructions      String?
+  departureAllocations       DepartureAllocation[]
+  departure_order            DepartureOrder        @relation(fields: [departure_order_id], references: [departure_order_id])
+  product                    Product               @relation(fields: [product_id], references: [product_id])
+  inventoryLogs              InventoryLog[]
+
+  @@unique([departure_order_id, product_code], name: "departure_order_product_unique")
+  @@map("departure_order_products")
+}
+
+model DepartureAllocation {
+  allocation_id              String                @id @default(uuid()) @map("allocation_id")
+  departure_order_id         String                @map("departure_order_id")
+  departure_order_product_id String                @map("departure_order_product_id")
+  source_allocation_id       String
+  allocated_quantity         Int
+  allocated_packages         Int
+  allocated_pallets          Int?
+  presentation               PresentationType      @default(PALETA)
+  allocated_weight           Decimal               @db.Decimal(10, 2)
+  allocated_volume           Decimal?              @db.Decimal(10, 2)
+  cell_id                    String
+  product_status             ProductStatus
+  status_code                Int
+  guide_number               String?
+  uploaded_documents         Json?
+  observations               String?
+  allocated_by               String
+  allocated_at               DateTime              @default(now())
+  status                     String                @default("ACTIVE")
+  allocator                  User                  @relation("DepartureAllocator", fields: [allocated_by], references: [id])
+  cell                       WarehouseCell         @relation(fields: [cell_id], references: [id])
+  departure_order            DepartureOrder        @relation(fields: [departure_order_id], references: [departure_order_id])
+  departure_order_product    DepartureOrderProduct @relation(fields: [departure_order_product_id], references: [departure_order_product_id])
+  source_allocation          InventoryAllocation   @relation(fields: [source_allocation_id], references: [allocation_id])
+  inventoryLogs              InventoryLog[]
+
+  @@map("departure_allocations")
+}
+
+model WarehouseCell {
+  id                    String                     @id @default(uuid()) @map("cell_id")
+  warehouse_id          String
+  row                   String
+  bay                   Int
+  position              Int
+  kind                  CellKind                   @default(NORMAL)
+  status                CellStatus                 @default(AVAILABLE)
+  cell_role             CellRole                   @default(STANDARD)
+  is_passage            Boolean                    @default(false)
+  capacity              Decimal                    @default(1) @db.Decimal(10, 2)
+  currentUsage          Decimal                    @default(0) @db.Decimal(10, 2)
+  current_packaging_qty Int                        @default(0)
+  current_weight        Decimal                    @default(0) @db.Decimal(10, 2)
+  cellAssignments       CellAssignment[]
+  clientCellAssignments ClientCellAssignment[]
+  departureAllocations  DepartureAllocation[]
+  inventory             Inventory[]                @relation("CellInventory")
+  inventoryAllocations  InventoryAllocation[]
+  inventoryLogs         InventoryLog[]             @relation("CellLogs")
+  transitionsFrom       QualityControlTransition[] @relation("TransitionFromCell")
+  transitionsTo         QualityControlTransition[] @relation("TransitionToCell")
+  warehouse             Warehouse                  @relation(fields: [warehouse_id], references: [warehouse_id])
+
+  @@unique([warehouse_id, row, bay, position], name: "idx_cell_unique")
+  @@map("warehouse_cells")
+}
+
+model Warehouse {
+  warehouse_id          String                 @id @default(uuid()) @map("warehouse_id")
+  name                  String                 @unique
+  address               Json?
+  location              String?
+  capacity              Int?
+  max_occupancy         Int?
+  status                String?
+  clientCellAssignments ClientCellAssignment[]
+  departureOrders       DepartureOrder[]
+  entryOrders           EntryOrder[]
+  inventory             Inventory[]
+  inventoryLogs         InventoryLog[]
+  cells                 WarehouseCell[]
+
+  @@map("warehouses")
+}
+
+model Inventory {
+  inventory_id             String                     @id @default(uuid()) @map("inventory_id")
+  allocation_id            String?
+  product_id               String
+  cell_id                  String
+  warehouse_id             String
+  current_quantity         Int
+  current_package_quantity Int
+  current_weight           Decimal                    @db.Decimal(10, 2)
+  current_volume           Decimal?                   @db.Decimal(10, 2)
+  status                   InventoryStatus            @default(QUARANTINED)
+  product_status           ProductStatus
+  status_code              Int
+  quality_status           QualityControlStatus       @default(CUARENTENA)
+  created_by               String?
+  last_modified_by         String?
+  last_modified_at         DateTime?
+  created_at               DateTime                   @default(now())
+  last_updated             DateTime                   @updatedAt
+  allocation               InventoryAllocation?       @relation(fields: [allocation_id], references: [allocation_id])
+  cell                     WarehouseCell              @relation("CellInventory", fields: [cell_id], references: [id])
+  creator                  User?                      @relation("InventoryCreator", fields: [created_by], references: [id])
+  lastModifier             User?                      @relation("InventoryLastModifier", fields: [last_modified_by], references: [id])
+  product                  Product                    @relation("ProductInventory", fields: [product_id], references: [product_id])
+  warehouse                Warehouse                  @relation(fields: [warehouse_id], references: [warehouse_id])
+  qualityTransitions       QualityControlTransition[]
+
+  @@unique([allocation_id, cell_id], name: "allocation_cell_unique")
+  @@map("inventory")
+}
+
+model InventoryLog {
+  log_id                     String                 @id @default(uuid()) @map("log_id")
+  timestamp                  DateTime               @default(now())
+  user_id                    String
+  product_id                 String
+  movement_type              MovementType
+  quantity_change            Int
+  package_change             Int                    @default(0)
+  weight_change              Decimal                @default(0) @db.Decimal(10, 2)
+  volume_change              Decimal?               @db.Decimal(10, 2)
+  entry_order_id             String?                @map("entry_order_id")
+  entry_order_product_id     String?
+  allocation_id              String?
+  departure_order_id         String?                @map("departure_order_id")
+  departure_order_product_id String?
+  departure_allocation_id    String?
+  warehouse_id               String?
+  cell_id                    String?
+  product_status             ProductStatus?
+  status_code                Int?
+  notes                      String?
+  quality_status             QualityControlStatus?
+  allocation                 InventoryAllocation?   @relation(fields: [allocation_id], references: [allocation_id])
+  cell                       WarehouseCell?         @relation("CellLogs", fields: [cell_id], references: [id])
+  departure_allocation       DepartureAllocation?   @relation(fields: [departure_allocation_id], references: [allocation_id])
+  departure_order            DepartureOrder?        @relation("DepartureOrderLogs", fields: [departure_order_id], references: [departure_order_id])
+  departure_order_product    DepartureOrderProduct? @relation(fields: [departure_order_product_id], references: [departure_order_product_id])
+  entry_order                EntryOrder?            @relation("EntryOrderLogs", fields: [entry_order_id], references: [entry_order_id])
+  entry_order_product        EntryOrderProduct?     @relation(fields: [entry_order_product_id], references: [entry_order_product_id])
+  product                    Product                @relation("ProductInventoryLogs", fields: [product_id], references: [product_id])
+  user                       User                   @relation(fields: [user_id], references: [id])
+  warehouse                  Warehouse?             @relation(fields: [warehouse_id], references: [warehouse_id])
+
+  @@index([timestamp, product_id], map: "idx_log_timestamp_product")
+  @@map("inventory_logs")
+}
+
+model CellAssignment {
+  assignment_id      String        @id @default(uuid()) @map("assignment_id")
+  cell_id            String
+  departure_order_id String?
+  entry_order_id     String?
+  assigned_by        String
+  assigned_at        DateTime      @default(now())
+  packaging_quantity Int
+  weight             Decimal       @db.Decimal(10, 2)
+  packaging_code     Int
+  status             String        @default("ACTIVE")
+  assignedBy         User          @relation("AssignedByUser", fields: [assigned_by], references: [id])
+  cell               WarehouseCell @relation(fields: [cell_id], references: [id])
+
+  @@map("cell_assignments")
+}
+
+model EntryOrderAudit {
+  audit_id          String      @id @default(uuid()) @map("audit_id")
+  entry_order_id    String      @map("entry_order_id")
+  audited_by        String      @map("audited_by")
+  audit_date        DateTime    @default(now())
+  audit_result      AuditResult
+  comments          String?
+  discrepancy_notes String?
+  auditor           User        @relation("UserAudits", fields: [audited_by], references: [id])
+  entry_order       EntryOrder  @relation(fields: [entry_order_id], references: [entry_order_id])
+
+  @@map("entry_order_audits")
+}
+
+model QualityControlTransition {
+  transition_id          String                @id @default(uuid()) @map("transition_id")
+  allocation_id          String?
+  inventory_id           String?
+  from_status            QualityControlStatus?
+  to_status              QualityControlStatus
+  quantity_moved         Int
+  package_quantity_moved Int
+  weight_moved           Decimal               @db.Decimal(10, 2)
+  volume_moved           Decimal?              @db.Decimal(10, 2)
+  from_cell_id           String?
+  to_cell_id             String?
+  performed_by           String
+  performed_at           DateTime              @default(now())
+  reason                 String?
+  notes                  String?
+  allocation             InventoryAllocation?  @relation(fields: [allocation_id], references: [allocation_id])
+  fromCell               WarehouseCell?        @relation("TransitionFromCell", fields: [from_cell_id], references: [id])
+  inventory              Inventory?            @relation(fields: [inventory_id], references: [inventory_id])
+  performer              User                  @relation("QualityTransitionPerformer", fields: [performed_by], references: [id])
+  toCell                 WarehouseCell?        @relation("TransitionToCell", fields: [to_cell_id], references: [id])
+
+  @@map("quality_control_transitions")
+}
+
+model SystemAuditLog {
+  audit_id     String       @id @default(uuid()) @map("audit_id")
+  user_id      String
+  performed_at DateTime     @default(now())
+  action       SystemAction
+  entity_type  String
+  entity_id    String
+  description  String
+  old_values   Json?
+  new_values   Json?
+  metadata     Json?
+  ip_address   String?
+  user_agent   String?
+  session_id   String?
+  user         User         @relation("UserSystemAudits", fields: [user_id], references: [id])
+
+  @@index([user_id, performed_at], map: "idx_audit_user_time")
+  @@index([entity_type, entity_id], map: "idx_audit_entity")
+  @@index([action, performed_at], map: "idx_audit_action_time")
+  @@map("system_audit_logs")
+}
+
 enum RoleName {
-  ADMIN                 // Full system access
-  WAREHOUSE_INCHARGE    // Warehouse management, approve orders, assign cells
-  PHARMACIST           // Quality control and inventory oversight (read-only)
-  WAREHOUSE_ASSISTANT  // Limited access to assigned clients only
-  CLIENT               // Create/update own entry orders only
+  ADMIN
+  WAREHOUSE_INCHARGE
+  PHARMACIST
+  WAREHOUSE_ASSISTANT
+  CLIENT
+  CLIENT_PHARMACIST
 }
 
-// ✅ NEW: Client Type enum for different client categories
 enum ClientType {
-  JURIDICO   // Juridical clients (companies/organizations)
-  NATURAL    // Natural clients (individual persons)
+  JURIDICO
+  NATURAL
 }
 
-// ✅ NEW: Company Type enum for juridical clients
 enum CompanyType {
-  PRIVADA    // Empresa Privada
-  PUBLICA   // Empresa Pública
+  PRIVADA
+  PUBLICA
 }
 
-// ✅ NEW: Establishment Type enum for commercial clients
 enum EstablishmentType {
-  SELECCIONAR             // Seleccionar
-  ALMACEN_ESPECIALIZADO   // Almacén Especializado
-  BOTICA                  // Botica
-  BOTIQUIN               // Botiquín
-  DROGUERIA              // Droguería
-  FARMACIA               // Farmacia
-  OTROS                  // Otros
+  SELECCIONAR
+  ALMACEN_ESPECIALIZADO
+  BOTICA
+  BOTIQUIN
+  DROGUERIA
+  FARMACIA
+  OTROS
 }
 
-// Packaging status enum based on your codes
 enum PackagingStatus {
-  NORMAL           // Codes: 30-37
-  PARTIALLY_DAMAGED // Codes: 40-47  
-  DAMAGED          // Codes: 50-57
+  NORMAL
+  PARTIALLY_DAMAGED
+  DAMAGED
 }
 
-// Packaging type enum
 enum PackagingType {
-  PALET    // 30, 40, 50
-  BOX      // 31, 41, 51
-  SACK     // 32, 42, 52
-  UNIT     // 33, 43, 53
-  PACK     // 34, 44, 54
-  BARRELS  // 35, 45, 55
-  BUNDLE   // 36, 46, 56
-  OTHER    // 37, 47, 57
+  PALET
+  BOX
+  SACK
+  UNIT
+  PACK
+  BARRELS
+  BUNDLE
+  OTHER
 }
 
-// Updated enums to match your requirements
 enum OriginType {
-  COMPRA_LOCAL         // Local Purchase
-  IMPORTACION          // Import
-  DEVOLUCION          // Return
-  ACONDICIONADO       // Conditioned
-  TRANSFERENCIA_INTERNA // Internal Transfer
-  FRACCIONADO         // Fractioned
+  COMPRA_LOCAL
+  IMPORTACION
+  DEVOLUCION
+  ACONDICIONADO
+  TRANSFERENCIA_INTERNA
+  FRACCIONADO
 }
 
 enum DocumentTypeEntry {
@@ -88,60 +925,60 @@ enum DocumentTypeDeparture {
 }
 
 enum OrderStatusEntry {
-  PENDIENTE    // Pending - when customer creates order
-  APROBADO     // Approved - when warehouse approves it
-  RECIBIDO     // Received - when warehouse assigns inventory
-  TERMINADO    // Completed - when QF transfers from Cuarentena to Aprobado
+  REVISION
+  PRESENTACION
+  FINALIZACION
+  PENDIENTE
+  APROBADO
+  RECIBIDO
+  TERMINADO
 }
 
 enum OrderStatusDeparture {
-  PENDING             // Created by client/warehouse, waiting for approval
-  APPROVED            // Approved by warehouse_incharge/admin, ready for dispatch
-  REVISION            // Needs changes, can be edited
-  REJECTED            // Rejected by warehouse_incharge/admin
-  PARTIALLY_DISPATCHED // Partially dispatched from warehouse
-  DISPATCHED          // Actually dispatched from warehouse (deprecated, use COMPLETED)
-  COMPLETED           // Fully completed dispatch
+  PENDING
+  APPROVED
+  REVISION
+  REJECTED
+  PARTIALLY_DISPATCHED
+  DISPATCHED
+  COMPLETED
 }
 
 enum PresentationType {
-  CAJA     // BOX
-  PALETA   // PALLET
-  SACO     // SACK
-  UNIDAD   // UNIT
-  PAQUETE  // PACKAGE
-  TAMBOS   // DRUMS
-  BULTO    // BUNDLE
-  OTRO     // OTHER
+  CAJA
+  PALETA
+  SACO
+  UNIDAD
+  PAQUETE
+  TAMBOS
+  BULTO
+  OTRO
 }
 
 enum TemperatureRangeType {
-  RANGE_15_30  // 15°C - 30°C
-  RANGE_15_25  // 15°C - 25°C
-  RANGE_2_8    // 2°C - 8°C
-  AMBIENTE     // Ambient
+  RANGE_15_30
+  RANGE_15_25
+  RANGE_2_8
+  AMBIENTE
 }
 
 enum ProductStatus {
-  // Normal status codes
-  PAL_NORMAL  // 30-PAL-NORMAL
-  CAJ_NORMAL  // 31-CAJ-NORMAL
-  SAC_NORMAL  // 32-SAC-NORMAL
-  UNI_NORMAL  // 33-UNI-NORMAL
-  PAQ_NORMAL  // 34-PAQ-NORMAL
-  TAM_NORMAL  // 35-TAM-NORMAL
-  BUL_NORMAL  // 36-BUL-NORMAL
-  OTR_NORMAL  // 37-OTR-NORMAL
-  
-  // Damaged status codes
-  PAL_DANADA  // 40-PAL-DAÑADA
-  CAJ_DANADA  // 41-CAJ-DAÑADA
-  SAC_DANADO  // 42-SAC-DAÑADO
-  UNI_DANADA  // 43-UNI-DANADA
-  PAQ_DANADO  // 44-PAQ-DANADO
-  TAM_DANADO  // 45-TAM-DANADO
-  BUL_DANADO  // 46-BUL-DANADO
-  OTR_DANADO  // 47-OTR-DANADO
+  PAL_NORMAL
+  CAJ_NORMAL
+  SAC_NORMAL
+  UNI_NORMAL
+  PAQ_NORMAL
+  TAM_NORMAL
+  BUL_NORMAL
+  OTR_NORMAL
+  PAL_DANADA
+  CAJ_DANADA
+  SAC_DANADO
+  UNI_DANADA
+  PAQ_DANADO
+  TAM_DANADO
+  BUL_DANADO
+  OTR_DANADO
 }
 
 enum ReviewStatus {
@@ -153,9 +990,9 @@ enum ReviewStatus {
 
 enum CellKind {
   NORMAL
-  DAMAGED    
-  TRANSFER   
-  RESERVED   
+  DAMAGED
+  TRANSFER
+  RESERVED
 }
 
 enum CellStatus {
@@ -195,54 +1032,47 @@ enum MovementType {
   DEPARTURE
   TRANSFER
   ADJUSTMENT
-  RETURN        
-  DISPOSAL         
-  RECALL         
-  INSPECTION       
+  RETURN
+  DISPOSAL
+  RECALL
+  INSPECTION
 }
 
 enum InventoryStatus {
   AVAILABLE
   RESERVED
-  HOLD              // Inventory held for partial dispatch remaining quantities
+  HOLD
   DAMAGED
   DEPLETED
   EXPIRED
-  IN_TRANSIT      
-  PENDING_INSPECTION 
-  QUARANTINED 
-  RETURNED       
-  DISPOSED        
+  IN_TRANSIT
+  PENDING_INSPECTION
+  QUARANTINED
+  RETURNED
+  DISPOSED
 }
 
-// ✅ NEW: Quality Control States for inventory flow
 enum QualityControlStatus {
-  CUARENTENA    // Quarantine - initial state after allocation
-  APROBADO      // Approved - ready for departure
-  DEVOLUCIONES  // Returns - products to be returned
-  CONTRAMUESTRAS // Samples - products kept for sampling
-  RECHAZADOS    // Rejected - products that failed quality check
+  CUARENTENA
+  APROBADO
+  DEVOLUCIONES
+  CONTRAMUESTRAS
+  RECHAZADOS
 }
 
-// ✅ ENHANCED: Comprehensive action types for complete system traceability
 enum SystemAction {
-  // Authentication & Session
   USER_LOGIN
   USER_LOGOUT
   USER_LOGIN_FAILED
   USER_SESSION_EXPIRED
   USER_PASSWORD_CHANGED
   USER_PROFILE_UPDATED
-  
-  // User Management
   USER_CREATED
   USER_UPDATED
   USER_DELETED
   USER_ACTIVATED
   USER_DEACTIVATED
   USER_ROLE_CHANGED
-  
-  // Entry Orders
   ENTRY_ORDER_CREATED
   ENTRY_ORDER_UPDATED
   ENTRY_ORDER_DELETED
@@ -253,8 +1083,6 @@ enum SystemAction {
   ENTRY_ORDER_PRODUCT_ADDED
   ENTRY_ORDER_PRODUCT_UPDATED
   ENTRY_ORDER_PRODUCT_REMOVED
-  
-  // Departure Orders
   DEPARTURE_ORDER_CREATED
   DEPARTURE_ORDER_UPDATED
   DEPARTURE_ORDER_DELETED
@@ -268,8 +1096,6 @@ enum SystemAction {
   DEPARTURE_ORDER_DISPATCHED
   DEPARTURE_ORDER_PARTIALLY_DISPATCHED
   DEPARTURE_ORDER_DISPATCH_COMPLETED
-  
-  // Inventory Management
   INVENTORY_ALLOCATED
   INVENTORY_DEALLOCATED
   INVENTORY_MOVED
@@ -282,16 +1108,12 @@ enum SystemAction {
   INVENTORY_DAMAGED
   INVENTORY_RETURNED
   INVENTORY_EXPIRED
-  
-  // Quality Control
   QUALITY_STATUS_CHANGED
   QUALITY_INSPECTION_STARTED
   QUALITY_INSPECTION_COMPLETED
   QUALITY_SAMPLE_TAKEN
   QUALITY_BATCH_APPROVED
   QUALITY_BATCH_REJECTED
-  
-  // Cell & Warehouse Management
   CELL_CREATED
   CELL_UPDATED
   CELL_DELETED
@@ -302,8 +1124,6 @@ enum SystemAction {
   WAREHOUSE_CREATED
   WAREHOUSE_UPDATED
   WAREHOUSE_DELETED
-  
-  // Client Management
   CLIENT_CREATED
   CLIENT_UPDATED
   CLIENT_DELETED
@@ -312,8 +1132,6 @@ enum SystemAction {
   CLIENT_CELL_ASSIGNED
   CLIENT_CELL_UNASSIGNED
   CLIENT_PROFILE_VIEWED
-  
-  // Product Management
   PRODUCT_CREATED
   PRODUCT_UPDATED
   PRODUCT_DELETED
@@ -321,65 +1139,43 @@ enum SystemAction {
   PRODUCT_DEACTIVATED
   PRODUCT_PRICE_CHANGED
   PRODUCT_SPECIFICATION_CHANGED
-  
-  // Supplier Management
   SUPPLIER_CREATED
   SUPPLIER_UPDATED
   SUPPLIER_DELETED
   SUPPLIER_ACTIVATED
   SUPPLIER_DEACTIVATED
   SUPPLIER_CONTACT_UPDATED
-  
-  // Customer Management
   CUSTOMER_CREATED
   CUSTOMER_UPDATED
   CUSTOMER_DELETED
   CUSTOMER_ACTIVATED
   CUSTOMER_DEACTIVATED
-  
-  // Reports & Analytics
   REPORT_GENERATED
   REPORT_EXPORTED
   REPORT_VIEWED
   DASHBOARD_ACCESSED
-  
-  // System Administration
   SYSTEM_BACKUP_CREATED
   SYSTEM_BACKUP_RESTORED
   SYSTEM_SETTINGS_CHANGED
   SYSTEM_MAINTENANCE_STARTED
   SYSTEM_MAINTENANCE_COMPLETED
-  
-  // Data Import/Export
   DATA_IMPORTED
   DATA_EXPORTED
   DATA_SYNCHRONIZED
-  
-  // Audit & Compliance
   AUDIT_STARTED
   AUDIT_COMPLETED
   COMPLIANCE_CHECK_PERFORMED
-  
-  // Alerts & Notifications
   ALERT_TRIGGERED
   NOTIFICATION_SENT
   REMINDER_SENT
-  
-  // File Operations
   FILE_UPLOADED
   FILE_DOWNLOADED
   FILE_DELETED
   DOCUMENT_GENERATED
-  
-  // API & Integration
   API_CALL_MADE
   INTEGRATION_SYNC
   WEBHOOK_TRIGGERED
-  
-  // Warehouse & Cell Management (only adding new value)
   CELL_ROLE_CHANGE
-  
-  // Error & Exception Handling
   ERROR_OCCURRED
   EXCEPTION_HANDLED
   SYSTEM_ERROR_LOGGED
@@ -389,1112 +1185,4 @@ enum AuditResult {
   PASSED
   FAILED
   PENDING
-}
-
-model Role {
-  role_id String   @id @default(uuid()) @map("role_id")
-  name    RoleName @unique
-  users   User[]
-
-  @@map("roles")
-}
-
-model User {
-  created_at            DateTime             @default(now())
-  active_state_id       String?
-  email                 String               @unique
-  organisation_id       String
-  user_id               String               @unique @map("user_id")
-  password_hash         String               @map("password_hash")
-  role_id               String?
-  id                    String               @id @default(uuid()) @map("id")
-  first_name            String?
-  last_name             String?
-  middle_name           String?
-  
-  // ✅ NEW: Client assignments for warehouse assistants
-  assigned_clients      String[]             @default([]) // Array of client IDs for WAREHOUSE_ASSISTANT role
-  
-  // Relations
-  active_state          ActiveState?         @relation(fields: [active_state_id], references: [state_id])
-  organisation          Organisation         @relation(fields: [organisation_id], references: [organisation_id])
-  role                  Role?                @relation(fields: [role_id], references: [role_id])
-  
-  // Order relations
-  orders                Order[]              @relation("OrderCreatedBy")
-  
-  // Entry order relations
-  createdEntryOrders    EntryOrder[]         @relation("EntryOrderCreator")
-  reviewedEntryOrders   EntryOrder[]         @relation("EntryOrderReviewer")
-  inventoryAllocations  InventoryAllocation[] @relation("InventoryAllocator")
-  
-  // ✅ NEW: Additional inventory relations for traceability
-  modifiedAllocations   InventoryAllocation[] @relation("InventoryModifier")
-  createdInventory      Inventory[]          @relation("InventoryCreator")
-  modifiedInventory     Inventory[]          @relation("InventoryLastModifier")
-  
-  // Departure order relations
-  createdDepartureOrders DepartureOrder[]    @relation("DepartureOrderCreator")
-  reviewedDepartureOrders DepartureOrder[]   @relation("DepartureOrderReviewer")
-  dispatchedDepartureOrders DepartureOrder[] @relation("DepartureOrderDispatcher")
-  departureAllocations  DepartureAllocation[] @relation("DepartureAllocator")
-  
-  // Inventory relations
-  inventoryLogs         InventoryLog[]
-  cellAssignments       CellAssignment[]     @relation("AssignedByUser")
-  
-  // ✅ NEW: Quality control and audit relations
-  qualityTransitions    QualityControlTransition[] @relation("QualityTransitionPerformer")
-  systemAudits          SystemAuditLog[]     @relation("UserSystemAudits")
-  
-  // ✅ FIXED: Add missing audit relation
-  audits                EntryOrderAudit[]    @relation("UserAudits")
-  
-  // ✅ NEW: Client cell assignment relations
-  clientCellAssignments ClientCellAssignment[] @relation("ClientCellAssigner")
-  
-  // ✅ NEW: Client creation and ownership relations
-  createdClients        Client[]             @relation("ClientCreator")
-  
-  // ✅ NEW: Multiple client user accounts relations
-  clientUserAccounts    ClientUser[]         @relation("ClientUserAccount")
-  createdClientUsers    ClientUser[]         @relation("ClientUserCreator")
-  
-  productAssignments    ClientProductAssignment[] @relation("ProductAssigner")
-  supplierAssignments   ClientSupplierAssignment[] @relation("SupplierAssigner")
-  
-  // ✅ NEW: Supplier creation relation
-  createdSuppliers      Supplier[]               @relation("SupplierCreatedBy")
-
-  @@map("users")
-}
-
-model Organisation {
-  organisation_id String   @id @default(uuid()) @map("organisation_id")
-  name            String
-  address         Json?
-  tax_id          String?
-  created_at      DateTime @default(now())
-  orders          Order[]
-  users           User[]
-
-  @@map("organisations")
-}
-
-model ActiveState {
-  state_id String     @id @default(uuid()) @map("state_id")
-  name     String     @unique
-  Customer Customer[]
-  Product  Product[]
-  User     User[]
-  Client   Client[]   // ✅ NEW: Client relation
-
-  @@map("active_states")
-}
-
-model Origin {
-  origin_id   String        @id @default(uuid()) @map("origin_id")
-  name        String        @unique
-  type        OriginType
-  description String?
-  EntryOrder  EntryOrder[]
-
-  @@map("origins")
-}
-
-model DocumentType {
-  document_type_id String              @id @default(uuid()) @map("document_type_id")
-  name             String              @unique
-  type             DocumentTypeEntry
-  description      String?
-  EntryOrder       EntryOrder[]
-
-  @@map("document_types")
-}
-
-// ✅ FIXED: Rename the model to avoid conflict
-model DepartureDocumentType {
-  document_type_id String                @id @default(uuid()) @map("document_type_id")
-  name             String                @unique
-  type             DocumentTypeDeparture
-  description      String?
-
-  @@map("departure_document_types")
-}
-
-model ExitOption {
-  exit_option_id String           @id @default(uuid()) @map("exit_option_id")
-  name           String           @unique
-  DepartureOrder DepartureOrder[] // ✅ This relation now works with the opposite field
-
-  @@map("exit_options")
-}
-
-model CustomerType {
-  customer_type_id String     @id @default(uuid()) @map("customer_type_id")
-  name             String     @unique
-  discount_rate    Decimal?   @db.Decimal(5, 2)
-  Customer         Customer[]
-
-  @@map("customer_types")
-}
-
-model Label {
-  label_id       String           @id @default(uuid()) @map("label_id")
-  name           String           @unique
-  DepartureOrder DepartureOrder[]
-
-  @@map("labels")
-}
-
-model ProductLine {
-  product_line_id String    @id @default(uuid()) @map("product_line_id")
-  name            String    @unique
-  Product         Product[]
-
-  @@map("product_lines")
-}
-
-model GroupName {
-  group_id         String    @id @default(uuid()) @map("group_id")
-  name             String    @unique
-  product_category String?
-  Product          Product[]
-
-  @@map("group_names")
-}
-
-// ✅ NEW: Product Category model
-model ProductCategory {
-  category_id     String              @id @default(uuid()) @map("category_id")
-  name            String              @unique
-  description     String?
-  created_at      DateTime            @default(now())
-  
-  // Relations
-  products        Product[]
-  subcategories1  ProductSubCategory1[]
-  
-  @@map("product_categories")
-}
-
-// ✅ NEW: Product Sub Category 1 model
-model ProductSubCategory1 {
-  subcategory1_id String              @id @default(uuid()) @map("subcategory1_id")
-  name            String
-  description     String?
-  category_id     String
-  created_at      DateTime            @default(now())
-  
-  // Relations
-  category        ProductCategory     @relation(fields: [category_id], references: [category_id])
-  products        Product[]
-  subcategories2  ProductSubCategory2[]
-  
-  @@unique([category_id, name], name: "category_subcategory1_unique")
-  @@map("product_subcategories1")
-}
-
-// ✅ NEW: Product Sub Category 2 model
-model ProductSubCategory2 {
-  subcategory2_id String              @id @default(uuid()) @map("subcategory2_id")
-  name            String
-  description     String?
-  subcategory1_id String
-  created_at      DateTime            @default(now())
-  
-  // Relations
-  subcategory1    ProductSubCategory1 @relation(fields: [subcategory1_id], references: [subcategory1_id])
-  products        Product[]
-  
-  @@unique([subcategory1_id, name], name: "subcategory1_subcategory2_unique")
-  @@map("product_subcategories2")
-}
-
-model Country {
-  country_id String     @id @default(uuid()) @map("country_id")
-  name       String     @unique
-  Supplier   Supplier[]
-
-  @@map("countries")
-}
-
-model TemperatureRange {
-  temperature_range_id String    @id @default(uuid()) @map("temperature_id")
-  range                String    @unique
-  min_celsius          Int?
-  max_celsius          Int?
-  Product              Product[]
-
-  @@map("temperature_ranges")
-}
-
-model Supplier {
-  created_at          DateTime     @default(now())
-  supplier_id         String       @id @default(uuid()) @map("supplier_id")
-  
-  // ✅ NEW: Updated supplier fields based on requirements
-  category            String?      // Categoria
-  company_name        String       // Nombre del Proveedor (required)
-  supplier_code       String?      // Supplier Code (optional, unique if provided)
-  tax_id              String?      // RUC (Tax ID)
-  registered_address  String?      // Dirección Fiscal
-  city                String?      // Ciudad
-  country_id          String?      // Pais (relation to Country)
-  contact_no          String?      // Numero de Contacto
-  contact_person      String?      // Persona de Contacto
-  notes               String?      // Comentario
-  created_by          String?      // User ID who created this supplier
-  
-  // ✅ DEPRECATED: Keep old fields for backward compatibility (will be removed in future migration)
-  name                String?      // Will be replaced by company_name
-  address             String?      // Will be replaced by registered_address
-  email               String?      // Moved to contact info
-  phone               String?      // Will be replaced by contact_no
-  ruc                 String?      // Will be replaced by tax_id
-  
-  // Relations
-  country             Country?     @relation(fields: [country_id], references: [country_id])
-  createdBy           User?        @relation("SupplierCreatedBy", fields: [created_by], references: [id])
-  entryOrderProducts  EntryOrderProduct[]
-  
-  // ✅ NEW: Client supplier assignments (which clients can access this supplier)
-  clientAssignments   ClientSupplierAssignment[]
-
-  @@map("suppliers")
-}
-
-model Customer {
-  customer_id     String           @id @default(uuid()) @map("customer_id")
-  name            String?
-  type_id         String?
-  billing_address Json?
-  active_state_id String?
-  created_at      DateTime?        @default(now())
-  active_state    ActiveState?     @relation(fields: [active_state_id], references: [state_id])
-  type            CustomerType?    @relation(fields: [type_id], references: [customer_type_id])
-  DepartureOrder  DepartureOrder[]
-
-  @@index([type_id], map: "idx_customer_type")
-  @@map("customers")
-}
-
-// ✅ NEW: Enhanced Client model for both juridical and natural clients
-model Client {
-  client_id           String            @id @default(uuid()) @map("client_id")
-  client_type         ClientType        @map("client_type")
-  client_code         String?           @unique @map("client_code") // Auto-generated code like C001, C002
-  
-  // Common fields for both types
-  email               String?
-  address             String?
-  phone               String?
-  cell_phone          String?
-  active_state_id     String?
-  created_at          DateTime          @default(now())
-  updated_at          DateTime          @updatedAt
-  
-  // Client ownership
-  created_by          String            // Warehouse incharge who created this client
-  
-  // Juridical client fields (used when client_type = JURIDICO)
-  company_name        String?           // Company Name
-  company_type        CompanyType?      // Privado/Publico
-  establishment_type  EstablishmentType? @default(SELECCIONAR) // Type of establishment
-  ruc                 String?           // RUC (tax identification)
-  
-  // Natural client fields (used when client_type = NATURAL)
-  first_names         String?           // First Names
-  last_name           String?           // Last Name
-  mothers_last_name   String?           // Mother's Last Name
-  individual_id       String?           // ID (DNI, etc.)
-  date_of_birth       DateTime?         // Date of Birth
-  
-  // Relations
-  active_state        ActiveState?      @relation(fields: [active_state_id], references: [state_id])
-  creator             User              @relation("ClientCreator", fields: [created_by], references: [id])
-  
-  // ✅ NEW: Multiple users per client
-  clientUsers         ClientUser[]      @relation("ClientUsers")
-  
-  // ✅ NEW: Client product assignments (each client has their own products)
-  productAssignments  ClientProductAssignment[]
-  
-  // ✅ NEW: Client supplier assignments (each client has their own suppliers)
-  supplierAssignments ClientSupplierAssignment[]
-  
-  // Client-specific cell assignments
-  cellAssignments     ClientCellAssignment[]
-  
-  // Entry and Departure orders for this client
-  entryOrders         EntryOrder[]
-  departureOrders     DepartureOrder[]  @relation("ClientDepartureOrders")
-
-  @@index([client_type], map: "idx_client_type")
-  @@index([company_type], map: "idx_client_company_type")
-  @@index([establishment_type], map: "idx_client_establishment_type")
-  @@index([active_state_id], map: "idx_client_active_state")
-  @@index([created_by], map: "idx_client_created_by") // ✅ NEW: Index for creator lookup
-  @@map("clients")
-}
-
-// ✅ NEW: Multiple users per client model
-model ClientUser {
-  client_user_id      String            @id @default(uuid()) @map("client_user_id")
-  client_id           String            @map("client_id")
-  user_id             String            @unique @map("user_id")
-  username            String            @unique @map("username")
-  is_primary          Boolean           @default(false) @map("is_primary") // Only one primary user per client
-  is_active           Boolean           @default(true) @map("is_active")
-  created_at          DateTime          @default(now())
-  created_by          String            @map("created_by")
-  notes               String?
-  
-  // Relations
-  client              Client            @relation("ClientUsers", fields: [client_id], references: [client_id], onDelete: Cascade)
-  user                User              @relation("ClientUserAccount", fields: [user_id], references: [id], onDelete: Cascade)
-  creator             User              @relation("ClientUserCreator", fields: [created_by], references: [id])
-
-  // @@unique([client_id, is_primary], name: "client_primary_user_unique", map: "client_users_client_primary_unique") // Removed - allows multiple non-primary users
-  @@index([client_id], map: "idx_client_users_client_id")
-  @@index([is_primary], map: "idx_client_users_is_primary")
-  @@index([is_active], map: "idx_client_users_is_active")
-  @@index([created_by], map: "idx_client_users_created_by")
-  @@map("client_users")
-}
-
-// ✅ NEW: Client-specific cell assignments model
-model ClientCellAssignment {
-  assignment_id   String       @id @default(uuid()) @map("assignment_id")
-  client_id       String       @map("client_id")
-  cell_id         String       @map("cell_id")
-  warehouse_id    String       @map("warehouse_id")
-  
-  // Assignment details
-  assigned_at     DateTime     @default(now())
-  assigned_by     String       // User who made the assignment
-  is_active       Boolean      @default(true)
-  priority        Int?         @default(1) // Priority for this client (1 = highest)
-  
-  // Notes and restrictions
-  notes           String?
-  max_capacity    Decimal?     @db.Decimal(10, 2) // Max capacity for this client
-  
-  // Relations
-  client          Client       @relation(fields: [client_id], references: [client_id], onDelete: Cascade)
-  cell            WarehouseCell @relation(fields: [cell_id], references: [id])
-  warehouse       Warehouse    @relation(fields: [warehouse_id], references: [warehouse_id])
-  assignedBy      User         @relation("ClientCellAssigner", fields: [assigned_by], references: [id])
-
-  @@unique([client_id, cell_id], name: "client_cell_unique")
-  @@index([client_id], map: "idx_client_assignments")
-  @@index([cell_id], map: "idx_cell_client_assignments")
-  @@index([warehouse_id], map: "idx_warehouse_client_assignments")
-  @@map("client_cell_assignments")
-}
-
-// ✅ NEW: Client-specific product assignments (each client has their own product catalog)
-model ClientProductAssignment {
-  assignment_id     String       @id @default(uuid()) @map("assignment_id")
-  client_id         String       @map("client_id")
-  product_id        String       @map("product_id")
-  
-  // Assignment details
-  assigned_at       DateTime     @default(now())
-  assigned_by       String       // Warehouse incharge who assigned this product
-  is_active         Boolean      @default(true)
-  
-  // Product-specific settings for this client
-  client_product_code String?    // Custom product code for this client
-  client_price        Decimal?   @db.Decimal(10, 2) // Client-specific pricing
-  notes               String?    // Notes about this product assignment
-  
-  // Restrictions and limits
-  max_order_quantity  Int?       // Maximum quantity this client can order
-  min_order_quantity  Int?       // Minimum quantity this client must order
-  
-  // Relations
-  client              Client     @relation(fields: [client_id], references: [client_id], onDelete: Cascade)
-  product             Product    @relation(fields: [product_id], references: [product_id], onDelete: Cascade)
-  assignedBy          User       @relation("ProductAssigner", fields: [assigned_by], references: [id])
-
-  @@unique([client_id, product_id], name: "client_product_unique")
-  @@index([client_id], map: "idx_client_product_assignments")
-  @@index([product_id], map: "idx_product_client_assignments")
-  @@index([assigned_by], map: "idx_product_assigner")
-  @@index([is_active], map: "idx_client_product_active")
-  @@map("client_product_assignments")
-}
-
-// ✅ NEW: Client-specific supplier assignments (each client has their own supplier catalog)
-model ClientSupplierAssignment {
-  assignment_id       String       @id @default(uuid()) @map("assignment_id")
-  client_id           String       @map("client_id")
-  supplier_id         String       @map("supplier_id")
-  
-  // Assignment details
-  assigned_at         DateTime     @default(now())
-  assigned_by         String       // Warehouse incharge who assigned this supplier
-  is_active           Boolean      @default(true)
-  
-  // Supplier-specific settings for this client
-  client_supplier_code String?     // Custom supplier code for this client
-  preferred_supplier   Boolean     @default(false) // Mark as preferred supplier for this client
-  credit_limit         Decimal?    @db.Decimal(10, 2) // Credit limit for this client with this supplier
-  payment_terms        String?     // Payment terms (e.g., "Net 30", "COD")
-  notes                String?     // Notes about this supplier assignment
-  
-  // Contact preferences
-  primary_contact      String?     // Primary contact person for this client
-  contact_email        String?     // Specific email for this client
-  contact_phone        String?     // Specific phone for this client
-  
-  // Relations
-  client               Client      @relation(fields: [client_id], references: [client_id], onDelete: Cascade)
-  supplier             Supplier    @relation(fields: [supplier_id], references: [supplier_id], onDelete: Cascade)
-  assignedBy           User        @relation("SupplierAssigner", fields: [assigned_by], references: [id])
-
-  @@unique([client_id, supplier_id], name: "client_supplier_unique")
-  @@index([client_id], map: "idx_client_supplier_assignments")
-  @@index([supplier_id], map: "idx_supplier_client_assignments")
-  @@index([assigned_by], map: "idx_supplier_assigner")
-  @@index([is_active], map: "idx_client_supplier_active")
-  @@index([preferred_supplier], map: "idx_preferred_supplier")
-  @@map("client_supplier_assignments")
-}
-
-model Product {
-  product_id           String           @id @default(uuid()) @map("product_id")
-  product_code         String           @unique // Codigo del Producto
-  created_at           DateTime         @default(now())
-  name                 String           // Nombre del Producto
-  
-  // ✅ NEW: Updated product fields based on requirements
-  category_id          String?          // Categoria (relation to ProductCategory)
-  subcategory1_id      String?          // Sub-Categoria1 (relation to ProductSubCategory1)
-  subcategory2_id      String?          // Sub category 2 (relation to ProductSubCategory2)
-  manufacturer         String?          // Proveedor (Manufacturer/Supplier)
-  temperature_range_id String?          // Temperatura (relation to TemperatureRange)
-  humidity             String?          // Humedad
-  observations         String?          // Observaciones
-  uploaded_documents   Json?            // Subir Documentos (Document Upload)
-  
-  // ✅ DEPRECATED: Keep old fields for backward compatibility (will be removed in future migration)
-  product_line_id      String?          // Will be replaced by category system
-  group_id             String?          // Will be replaced by category system
-  active_state_id      String?
-  storage_conditions   String?          // Will be replaced by observations
-  unit_weight          Decimal?         @db.Decimal(10, 2) 
-  unit_volume          Decimal?         @db.Decimal(10, 2) 
-  
-  // Relations
-  category             ProductCategory?     @relation(fields: [category_id], references: [category_id])
-  subcategory1         ProductSubCategory1? @relation(fields: [subcategory1_id], references: [subcategory1_id])
-  subcategory2         ProductSubCategory2? @relation(fields: [subcategory2_id], references: [subcategory2_id])
-  temperature_range    TemperatureRange?    @relation(fields: [temperature_range_id], references: [temperature_range_id])
-  
-  // ✅ DEPRECATED: Old relations (for backward compatibility)
-  active_state         ActiveState?     @relation(fields: [active_state_id], references: [state_id])
-  group                GroupName?       @relation(fields: [group_id], references: [group_id])
-  product_line         ProductLine?     @relation(fields: [product_line_id], references: [product_line_id])
-  
-  // Relations
-  inventory            Inventory[]      @relation(name: "ProductInventory")     
-  inventoryLogs        InventoryLog[]   @relation(name: "ProductInventoryLogs")
-  entryOrderProducts   EntryOrderProduct[]
-  departureOrderProducts DepartureOrderProduct[]
-  
-  // ✅ NEW: Client product assignments (which clients can access this product)
-  clientAssignments    ClientProductAssignment[]
-
-  @@index([category_id], map: "idx_product_category")
-  @@index([subcategory1_id], map: "idx_product_subcategory1")
-  @@index([subcategory2_id], map: "idx_product_subcategory2")
-  @@index([manufacturer], map: "idx_product_manufacturer")
-  @@map("products")
-}
-
-model Order {
-  status          String          @default("PENDING")
-  created_at      DateTime        @default(now())
-  created_by      String
-  order_id        String          @id @default(uuid()) @map("order_id")
-  order_type      String
-  organisation_id String
-  priority        String?
-  departureOrder  DepartureOrder?
-  entryOrder      EntryOrder?
-  createdBy       User            @relation("OrderCreatedBy", fields: [created_by], references: [id])
-  organisation    Organisation    @relation(fields: [organisation_id], references: [organisation_id])
-
-  @@index([created_at], map: "idx_order_creation")
-  @@map("orders")
-}
-
-model EntryOrder {
-  entry_order_id              String              @id @default(uuid()) @map("entry_order_id")
-  order_id                    String              @unique
-  entry_order_no              String              @unique
-
-  // Basic order info
-  origin_id                   String?
-  document_type_id            String?
-  registration_date           DateTime            @default(now())
-  document_date               DateTime?
-  entry_date_time             DateTime?
-  created_by                  String
-  client_id                   String?             // ✅ NEW: Direct reference to client (nullable for migration)
-  
-  // Order details
-  order_status                OrderStatusEntry    @default(PENDIENTE)
-  total_volume                Decimal?            @db.Decimal(10, 2)
-  total_weight                Decimal?            @db.Decimal(10, 2)
-  cif_value                   Decimal?            @db.Decimal(10, 2)
-  total_pallets               Int?
-  observation                 String?
-  guide_number                String?
-
-  // Document uploads
-  uploaded_documents          Json?
-  
-  // Review status
-  review_status               ReviewStatus        @default(PENDING)
-  review_comments             String?
-  reviewed_by                 String?
-  reviewed_at                 DateTime?
-  
-  // Warehouse assignment
-  warehouse_id                String?
-  
-  // Relations
-  origin                      Origin?             @relation(fields: [origin_id], references: [origin_id])
-  documentType                DocumentType?       @relation(fields: [document_type_id], references: [document_type_id])
-  order                       Order               @relation(fields: [order_id], references: [order_id])
-  creator                     User                @relation("EntryOrderCreator", fields: [created_by], references: [id])
-  client                      Client?             @relation(fields: [client_id], references: [client_id])
-  reviewer                    User?               @relation("EntryOrderReviewer", fields: [reviewed_by], references: [id])
-  warehouse                   Warehouse?          @relation(fields: [warehouse_id], references: [warehouse_id])
-  
-  // Multiple products in entry order
-  products                    EntryOrderProduct[]
-  inventoryAllocations        InventoryAllocation[]
-  inventoryLogs               InventoryLog[]      @relation(name: "EntryOrderLogs")
-  
-  // ✅ FIXED: Add missing audit relation
-  audits                      EntryOrderAudit[]
-
-  @@map("entry_orders")
-}
-
-model EntryOrderProduct {
-  entry_order_product_id    String              @id @default(uuid()) @map("entry_order_product_id")
-  entry_order_id            String              @map("entry_order_id")
-  
-  // Product identification
-  serial_number             String?
-  supplier_id               String?
-  product_code              String
-  product_id                String
-  lot_series                String?
-  
-  // Dates
-  manufacturing_date        DateTime?
-  expiration_date           DateTime?
-  
-  // Quantities (as received)
-  inventory_quantity        Int
-  package_quantity          Int
-  quantity_pallets          Int?
-  presentation              PresentationType    @default(CAJA)
-  guide_number              String?
-  weight_kg                 Decimal             @db.Decimal(10, 2)
-  volume_m3                 Decimal?            @db.Decimal(10, 2)
-  insured_value             Decimal?            @db.Decimal(10, 2)
-  
-  // Environmental conditions
-  temperature_range         TemperatureRangeType @default(AMBIENTE)
-  humidity                  String?
-  health_registration       String?
-  
-  // Relations
-  entry_order               EntryOrder          @relation(fields: [entry_order_id], references: [entry_order_id])
-  supplier                  Supplier?           @relation(fields: [supplier_id], references: [supplier_id])
-  product                   Product             @relation(fields: [product_id], references: [product_id])
-  
-  // Inventory allocations for this product
-  inventoryAllocations      InventoryAllocation[]
-  inventoryLogs             InventoryLog[]
-
-  @@unique([entry_order_id, product_code, lot_series], name: "entry_order_product_unique")
-  @@map("entry_order_products")
-}
-
-model InventoryAllocation {
-  allocation_id             String              @id @default(uuid()) @map("allocation_id")
-  entry_order_id            String              @map("entry_order_id")
-  entry_order_product_id    String              @map("entry_order_product_id")
-  
-  // Allocation details (filled by warehouse staff)
-  inventory_quantity        Int
-  package_quantity          Int
-  quantity_pallets          Int?
-  presentation              PresentationType    @default(PALETA)
-  weight_kg                 Decimal             @db.Decimal(10, 2)
-  volume_m3                 Decimal?            @db.Decimal(10, 2)
-  
-  // Cell assignment
-  cell_id                   String
-  
-  // Product status with your coding system
-  product_status            ProductStatus       @default(PAL_NORMAL)
-  status_code               Int
-  
-  // ✅ NEW: Quality control status (starts in CUARENTENA)
-  quality_status            QualityControlStatus @default(CUARENTENA)
-  
-  // ✅ NEW: User traceability fields
-  allocated_by              String
-  allocated_at              DateTime            @default(now())
-  last_modified_by          String?
-  last_modified_at          DateTime?
-  
-  // Documentation
-  guide_number              String?
-  uploaded_documents        Json?
-  observations              String?
-  
-  // Status
-  status                    String              @default("ACTIVE")
-  
-  // Relations
-  entry_order               EntryOrder          @relation(fields: [entry_order_id], references: [entry_order_id])
-  entry_order_product       EntryOrderProduct   @relation(fields: [entry_order_product_id], references: [entry_order_product_id])
-  cell                      WarehouseCell       @relation(fields: [cell_id], references: [id])
-  allocator                 User                @relation("InventoryAllocator", fields: [allocated_by], references: [id])
-  lastModifier              User?               @relation("InventoryModifier", fields: [last_modified_by], references: [id])
-  
-  // Create actual inventory record
-  inventory                 Inventory[]
-  inventoryLogs             InventoryLog[]
-  
-  // ✅ NEW: Quality control transitions
-  qualityTransitions        QualityControlTransition[]
-  
-  // ✅ FIXED: Add missing relation for departure allocations
-  departureAllocations      DepartureAllocation[]
-
-  @@map("inventory_allocations")
-}
-
-// NEW: Updated Departure Order model matching entry flow
-model DepartureOrder {
-  departure_order_id          String              @id @default(uuid()) @map("departure_order_id")
-  order_id                    String              @unique
-  departure_order_no          String              @unique
-  
-  // Basic order info
-  customer_id                 String?  // ✅ Made optional to support both Customer and Client
-  client_id                   String?  // ✅ NEW: Support for new Client model
-  document_type_ids           String[]            @default([]) // ✅ NEW: Multi-select document types
-  registration_date           DateTime            @default(now())
-  document_date               DateTime?
-  departure_date_time         DateTime?           // ✅ MANDATORY: Dispatch date and time
-  created_by                  String
-  
-  // Order details
-  order_status                OrderStatusDeparture @default(PENDING)
-  destination_point           String?             // Where goods are going
-  transport_type              String?             // Truck, Ship, etc.
-  carrier_name                String?             // Transport company
-  total_volume                Decimal?            @db.Decimal(10, 2)
-  total_weight                Decimal?            @db.Decimal(10, 2)
-  total_value                 Decimal?            @db.Decimal(10, 2)
-  total_pallets               Int?                // ✅ MANDATORY: Pallet/Position quantity
-  observation                 String?
-  
-  // ✅ NEW: Mandatory document fields
-  dispatch_document_number    String?             // ✅ MANDATORY: Dispatch document number
-
-  // Document uploads
-  uploaded_documents          Json?               // ✅ MANDATORY: Document upload
-  
-  // Review status
-  review_status               ReviewStatus        @default(PENDING)
-  review_comments             String?
-  reviewed_by                 String?
-  reviewed_at                 DateTime?
-  
-  // ✅ NEW: Dispatch tracking (separate from approval)
-  dispatch_status             String              @default("NOT_DISPATCHED") // NOT_DISPATCHED, DISPATCHING, DISPATCHED
-  dispatched_by               String?
-  dispatched_at               DateTime?
-  dispatch_notes              String?
-  
-  // Warehouse assignment
-  warehouse_id                String?
-  label_id                    String?
-  exit_option_id              String?             // ✅ FIXED: Add missing field
-  
-  // Relations
-  customer                    Customer?           @relation(fields: [customer_id], references: [customer_id])
-  client                      Client?             @relation("ClientDepartureOrders", fields: [client_id], references: [client_id])
-  order                       Order               @relation(fields: [order_id], references: [order_id])
-  creator                     User                @relation("DepartureOrderCreator", fields: [created_by], references: [id])
-  reviewer                    User?               @relation("DepartureOrderReviewer", fields: [reviewed_by], references: [id])
-  dispatcher                  User?               @relation("DepartureOrderDispatcher", fields: [dispatched_by], references: [id])
-  warehouse                   Warehouse?          @relation(fields: [warehouse_id], references: [warehouse_id])
-  label                       Label?              @relation(fields: [label_id], references: [label_id])
-  exitOption                  ExitOption?         @relation(fields: [exit_option_id], references: [exit_option_id]) // ✅ FIXED: Add missing relation
-  
-  // Multiple products in departure order
-  products                    DepartureOrderProduct[]
-  departureAllocations        DepartureAllocation[]
-  inventoryLogs               InventoryLog[]      @relation(name: "DepartureOrderLogs")
-
-  @@map("departure_orders")
-}
-
-// NEW: Departure Order Product model
-model DepartureOrderProduct {
-  departure_order_product_id  String              @id @default(uuid()) @map("departure_order_product_id")
-  departure_order_id          String              @map("departure_order_id")
-  
-  // Product identification
-  product_code                String
-  product_id                  String
-  lot_series                  String?
-  
-  // Quantities requested
-  requested_quantity          Int
-  requested_packages          Int
-  requested_pallets           Int?
-  presentation                PresentationType    @default(CAJA)
-  requested_weight            Decimal             @db.Decimal(10, 2)
-  requested_volume            Decimal?            @db.Decimal(10, 2)
-  unit_price                  Decimal?            @db.Decimal(10, 2)
-  total_value                 Decimal?            @db.Decimal(10, 2)
-  
-  // ✅ NEW: Partial dispatch tracking
-  dispatched_quantity         Int                 @default(0)
-  dispatched_packages         Int                 @default(0)
-  dispatched_pallets          Int                 @default(0)
-  dispatched_weight           Decimal             @db.Decimal(10, 2) @default(0)
-  dispatched_volume           Decimal?            @db.Decimal(10, 2) @default(0)
-  remaining_quantity          Int                 @default(0) // Computed: requested_quantity - dispatched_quantity
-  remaining_packages          Int                 @default(0) // Computed: requested_packages - dispatched_packages
-  remaining_weight            Decimal             @db.Decimal(10, 2) @default(0) // Computed: requested_weight - dispatched_weight
-  
-  // Special requirements
-  temperature_requirement     TemperatureRangeType @default(AMBIENTE)
-  special_handling            String?
-  delivery_instructions       String?
-  
-  // Relations
-  departure_order             DepartureOrder      @relation(fields: [departure_order_id], references: [departure_order_id])
-  product                     Product             @relation(fields: [product_id], references: [product_id])
-  
-  // Departure allocations for this product
-  departureAllocations        DepartureAllocation[]
-  inventoryLogs               InventoryLog[]
-
-  @@unique([departure_order_id, product_code], name: "departure_order_product_unique")
-  @@map("departure_order_products")
-}
-
-// ✅ FIXED: Add missing relation in DepartureAllocation
-model DepartureAllocation {
-  allocation_id               String              @id @default(uuid()) @map("allocation_id")
-  departure_order_id          String              @map("departure_order_id")
-  departure_order_product_id  String              @map("departure_order_product_id")
-  
-  // Source inventory allocation
-  source_allocation_id        String              // Which inventory allocation this comes from
-  
-  // Allocation details (filled by warehouse staff)
-  allocated_quantity          Int                 // How much to take from inventory
-  allocated_packages          Int                 // Package quantity for this allocation
-  allocated_pallets           Int?                // Pallets for departure
-  presentation                PresentationType    @default(PALETA)
-  allocated_weight            Decimal             @db.Decimal(10, 2)
-  allocated_volume            Decimal?            @db.Decimal(10, 2)
-  
-  // Cell source
-  cell_id                     String              // Which cell to take from
-  
-  // Product status
-  product_status              ProductStatus
-  status_code                 Int
-  
-  // Documentation
-  guide_number                String?
-  uploaded_documents          Json?
-  observations                String?
-  
-  // Tracking
-  allocated_by                String              // Warehouse user
-  allocated_at                DateTime            @default(now())
-  status                      String              @default("ACTIVE")
-  
-  // Relations
-  departure_order             DepartureOrder      @relation(fields: [departure_order_id], references: [departure_order_id])
-  departure_order_product     DepartureOrderProduct @relation(fields: [departure_order_product_id], references: [departure_order_product_id])
-  source_allocation           InventoryAllocation @relation(fields: [source_allocation_id], references: [allocation_id])
-  cell                        WarehouseCell       @relation(fields: [cell_id], references: [id])
-  allocator                   User                @relation("DepartureAllocator", fields: [allocated_by], references: [id])
-  
-  inventoryLogs               InventoryLog[]
-
-  @@map("departure_allocations")
-}
-
-model WarehouseCell {
-  id                        String                @id @default(uuid()) @map("cell_id")
-  warehouse_id              String
-  row                       String
-  bay                       Int
-  position                  Int
-  kind                      CellKind              @default(NORMAL)
-  status                    CellStatus            @default(AVAILABLE)
-  cell_role                 CellRole              @default(STANDARD)
-  is_passage                Boolean               @default(false)  // Mark passage cells
-  capacity                  Decimal               @db.Decimal(10,2)  @default(1)
-  currentUsage              Decimal               @db.Decimal(10,2)  @default(0)
-  
-  // Current contents tracking
-  current_packaging_qty     Int                   @default(0)
-  current_weight            Decimal               @db.Decimal(10,2) @default(0)
-
-  warehouse                 Warehouse             @relation(fields: [warehouse_id], references: [warehouse_id])
-  inventoryLogs             InventoryLog[]        @relation("CellLogs")
-  inventory                 Inventory[]           @relation(name: "CellInventory")
-  cellAssignments           CellAssignment[]
-  inventoryAllocations      InventoryAllocation[]
-  departureAllocations      DepartureAllocation[]
-  
-  // ✅ NEW: Quality control transition relations
-  transitionsFrom           QualityControlTransition[] @relation("TransitionFromCell")
-  transitionsTo             QualityControlTransition[] @relation("TransitionToCell")
-  
-  // ✅ NEW: Client cell assignment relations
-  clientCellAssignments     ClientCellAssignment[]
-
-  @@unique([warehouse_id, row, bay, position], name: "idx_cell_unique")
-  @@map("warehouse_cells")
-}
-
-model Warehouse {
-  warehouse_id       String          @id @default(uuid()) @map("warehouse_id")
-  name               String          @unique
-  address            Json?
-  location           String?
-  capacity           Int?
-  max_occupancy      Int?
-  status             String?
-  inventory          Inventory[]
-  entryOrders        EntryOrder[]
-  departureOrders    DepartureOrder[]
-  cells              WarehouseCell[]  
-  inventoryLogs      InventoryLog[]
-  
-  // ✅ NEW: Client cell assignment relations
-  clientCellAssignments ClientCellAssignment[]
-
-  @@map("warehouses")
-}
-
-model Inventory {
-  inventory_id              String                @id @default(uuid()) @map("inventory_id")
-  allocation_id             String?
-  product_id                String
-  cell_id                   String
-  warehouse_id              String
-  
-  // Current quantities
-  current_quantity          Int
-  current_package_quantity  Int
-  current_weight            Decimal               @db.Decimal(10, 2)
-  current_volume            Decimal?              @db.Decimal(10, 2)
-  
-  // Status
-  status                    InventoryStatus       @default(QUARANTINED)  // ✅ Changed: Start in quarantine
-  product_status            ProductStatus
-  status_code               Int
-  
-  // ✅ NEW: Quality control status
-  quality_status            QualityControlStatus  @default(CUARENTENA)
-  
-  // ✅ NEW: User traceability
-  created_by                String?
-  last_modified_by          String?
-  last_modified_at          DateTime?
-  
-  // Tracking
-  created_at                DateTime              @default(now())
-  last_updated              DateTime              @updatedAt
-  
-  // Relations
-  allocation                InventoryAllocation?  @relation(fields: [allocation_id], references: [allocation_id])
-  product                   Product               @relation(fields: [product_id], references: [product_id], name: "ProductInventory")
-  cell                      WarehouseCell         @relation("CellInventory", fields: [cell_id], references: [id])
-  warehouse                 Warehouse             @relation(fields: [warehouse_id], references: [warehouse_id])
-  creator                   User?                 @relation("InventoryCreator", fields: [created_by], references: [id])
-  lastModifier              User?                 @relation("InventoryLastModifier", fields: [last_modified_by], references: [id])
-  
-  // ✅ NEW: Quality control transitions for this inventory
-  qualityTransitions        QualityControlTransition[]
-
-  @@unique([allocation_id, cell_id], name: "allocation_cell_unique")
-  @@map("inventory")
-}
-
-model InventoryLog {
-  log_id                    String                @id @default(uuid()) @map("log_id")
-  timestamp                 DateTime              @default(now())
-  user_id                   String
-  product_id                String
-  
-  // Movement details
-  movement_type             MovementType
-  quantity_change           Int
-  package_change            Int                   @default(0)
-  weight_change             Decimal               @db.Decimal(10, 2) @default(0)
-  volume_change             Decimal?              @db.Decimal(10, 2)
-  
-  // References
-  entry_order_id            String?               @map("entry_order_id")
-  entry_order_product_id    String?
-  allocation_id             String?
-  departure_order_id        String?               @map("departure_order_id")
-  departure_order_product_id String?
-  departure_allocation_id   String?
-  warehouse_id              String?
-  cell_id                   String?
-  
-  // Product status
-  product_status            ProductStatus?
-  status_code               Int?
-
-  // ✅ NEW: Quality status at the time of this log entry (for historical tracking)
-  quality_status            QualityControlStatus?
-
-  notes                     String?
-  
-  // Relations
-  user                      User                  @relation(fields: [user_id], references: [id])
-  product                   Product               @relation(fields: [product_id], references: [product_id], name: "ProductInventoryLogs")
-  entry_order               EntryOrder?           @relation(fields: [entry_order_id], references: [entry_order_id], name: "EntryOrderLogs")
-  entry_order_product       EntryOrderProduct?    @relation(fields: [entry_order_product_id], references: [entry_order_product_id])
-  allocation                InventoryAllocation?  @relation(fields: [allocation_id], references: [allocation_id])
-  departure_order           DepartureOrder?       @relation(fields: [departure_order_id], references: [departure_order_id], name: "DepartureOrderLogs")
-  departure_order_product   DepartureOrderProduct? @relation(fields: [departure_order_product_id], references: [departure_order_product_id])
-  departure_allocation      DepartureAllocation?  @relation(fields: [departure_allocation_id], references: [allocation_id])
-  warehouse                 Warehouse?            @relation(fields: [warehouse_id], references: [warehouse_id])
-  cell                      WarehouseCell?        @relation("CellLogs", fields: [cell_id], references: [id])
-
-  @@index([timestamp, product_id], map: "idx_log_timestamp_product")
-  @@map("inventory_logs")
-}
-
-model CellAssignment {
-  assignment_id             String              @id @default(uuid()) @map("assignment_id")
-  cell_id                   String
-  departure_order_id        String?
-  entry_order_id            String?
-  assigned_by               String
-  assigned_at               DateTime            @default(now())
-  packaging_quantity        Int
-  weight                    Decimal             @db.Decimal(10, 2)
-  packaging_code            Int
-  status                    String              @default("ACTIVE")
-  
-  cell                      WarehouseCell       @relation(fields: [cell_id], references: [id])
-  assignedBy                User                @relation("AssignedByUser", fields: [assigned_by], references: [id])
-
-  @@map("cell_assignments")
-}
-
-model EntryOrderAudit {
-  audit_id          String      @id @default(uuid()) @map("audit_id")
-  entry_order_id    String      @map("entry_order_id")
-  audited_by        String      @map("audited_by")
-  audit_date        DateTime    @default(now())
-  audit_result      AuditResult
-  comments          String?
-  discrepancy_notes String?
-  
-  entry_order       EntryOrder  @relation(fields: [entry_order_id], references: [entry_order_id])
-  auditor           User        @relation("UserAudits", fields: [audited_by], references: [id])
-  
-  @@map("entry_order_audits")
-}
-
-// ✅ NEW: Quality Control Transition Model for tracking status changes
-model QualityControlTransition {
-  transition_id             String                @id @default(uuid()) @map("transition_id")
-  
-  // What was transitioned
-  allocation_id             String?               // If whole allocation moved
-  inventory_id              String?               // If specific inventory moved
-  
-  // Transition details
-  from_status               QualityControlStatus?
-  to_status                 QualityControlStatus
-  
-  // Quantities moved (for partial moves)
-  quantity_moved            Int
-  package_quantity_moved    Int
-  weight_moved              Decimal               @db.Decimal(10, 2)
-  volume_moved              Decimal?              @db.Decimal(10, 2)
-  
-  // Cell movement (if changed)
-  from_cell_id              String?
-  to_cell_id                String?
-  
-  // User tracking
-  performed_by              String
-  performed_at              DateTime              @default(now())
-  reason                    String?
-  notes                     String?
-  
-  // Relations
-  allocation                InventoryAllocation?  @relation(fields: [allocation_id], references: [allocation_id])
-  inventory                 Inventory?            @relation(fields: [inventory_id], references: [inventory_id])
-  performer                 User                  @relation("QualityTransitionPerformer", fields: [performed_by], references: [id])
-  fromCell                  WarehouseCell?        @relation("TransitionFromCell", fields: [from_cell_id], references: [id])
-  toCell                    WarehouseCell?        @relation("TransitionToCell", fields: [to_cell_id], references: [id])
-
-  @@map("quality_control_transitions")
-}
-
-// ✅ NEW: System-wide audit trail for all user actions
-model SystemAuditLog {
-  audit_id                  String                @id @default(uuid()) @map("audit_id")
-  
-  // User and timestamp
-  user_id                   String
-  performed_at              DateTime              @default(now())
-  action                    SystemAction
-  
-  // Context
-  entity_type               String                // "EntryOrder", "Inventory", "DepartureOrder", etc.
-  entity_id                 String                // The ID of the affected entity
-  
-  // Details
-  description               String                // Human readable description
-  old_values                Json?                 // Previous state (for updates)
-  new_values                Json?                 // New state (for updates)
-  metadata                  Json?                 // Additional context
-  
-  // IP and session tracking
-  ip_address                String?
-  user_agent                String?
-  session_id                String?
-  
-  // Relations
-  user                      User                  @relation("UserSystemAudits", fields: [user_id], references: [id])
-
-  @@index([user_id, performed_at], map: "idx_audit_user_time")
-  @@index([entity_type, entity_id], map: "idx_audit_entity")
-  @@index([action, performed_at], map: "idx_audit_action_time")
-  @@map("system_audit_logs")
 }

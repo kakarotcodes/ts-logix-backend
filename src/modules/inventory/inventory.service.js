@@ -909,8 +909,11 @@ async function getInventoryMovementLogs(filters = {}, clientRestriction = null) 
   // Build where clause for filtering
   const where = {};
 
+  console.log('🔍 CLIENT RESTRICTION:', JSON.stringify(clientRestriction, null, 2));
+
   // ✅ NEW: Filter by client for client-restricted PHARMACIST users
   if (clientRestriction && clientRestriction.isClientRestricted && clientRestriction.client_id) {
+    console.log('✅ Applying client filter for client_id:', clientRestriction.client_id);
     where.OR = [
       // Entry order movements
       {
@@ -925,6 +928,8 @@ async function getInventoryMovementLogs(filters = {}, clientRestriction = null) 
         }
       }
     ];
+  } else {
+    console.log('⚠️  NO client restriction applied');
   }
 
   // Filter by movement type
@@ -1074,7 +1079,6 @@ async function getInventoryMovementLogs(filters = {}, clientRestriction = null) 
                   first_name: true,
                   last_name: true,
                   clientUserAccounts: {
-                    where: { is_active: true },
                     select: {
                       client: {
                         select: {
@@ -1083,8 +1087,7 @@ async function getInventoryMovementLogs(filters = {}, clientRestriction = null) 
                           last_name: true
                         }
                       }
-                    },
-                    take: 1
+                    }
                   }
                 }
               }
@@ -1130,8 +1133,8 @@ async function getInventoryMovementLogs(filters = {}, clientRestriction = null) 
 
     if (log.allocation?.entry_order?.creator) {
       const creator = log.allocation.entry_order.creator;
-      if (creator.clientUserAccounts && creator.clientUserAccounts.length > 0) {
-        const client = creator.clientUserAccounts[0].client;
+      if (creator.clientUserAccounts) {
+        const client = creator.clientUserAccounts.client;
         clientName = client.company_name ||
                     `${client.first_names || ''} ${client.last_name || ''}`.trim();
       } else {

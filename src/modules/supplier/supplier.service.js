@@ -73,7 +73,7 @@ async function createSupplier(supplierData, userRole = null, userId = null) {
     });
     
     // ✅ NEW: Auto-assign supplier to client if created by CLIENT role
-    if (userRole === "CLIENT" && userId) {
+    if (userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST" && userId) {
       try {
         // Find the client account for this user using the new ClientUser table
         const clientUser = await prisma.clientUser.findFirst({

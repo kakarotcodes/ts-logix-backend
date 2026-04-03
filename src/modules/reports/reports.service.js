@@ -704,7 +704,7 @@ async function generateProductCategoryReport(filters, userContext) {
 
     // Role-based access control
     let clientFilter = {};
-    if (userContext.userRole === 'CLIENT') {
+    if (userContext.userRole === 'CLIENT' || userContext.userRole === 'CLIENT_PHARMACIST') {
       if (userContext.client_id) {
         clientFilter = {
           entry_order_product: {
@@ -819,7 +819,7 @@ async function generateProductCategoryReport(filters, userContext) {
         if (primaryClient) {
           clientName = primaryClient.company_name || `${primaryClient.first_names || ''} ${primaryClient.last_name || ''}`.trim();
           clientId = primaryClient.client_id;
-        } else if (orderCreator?.role?.name === 'CLIENT') {
+        } else if (orderCreator?.role?.name === 'CLIENT' || orderCreator?.role?.name === 'CLIENT_PHARMACIST') {
           clientName = `${orderCreator.first_name || ''} ${orderCreator.last_name || ''}`.trim();
           clientId = orderCreator.id;
         }
@@ -1018,7 +1018,7 @@ async function generateProductWiseReport(filters, userContext) {
     let entryClientFilter = {};
     let departureClientFilter = {};
     
-    if (userContext.userRole === 'CLIENT') {
+    if (userContext.userRole === 'CLIENT' || userContext.userRole === 'CLIENT_PHARMACIST') {
       if (userContext.client_id) {
         entryClientFilter = {
           entry_order: {
@@ -1203,7 +1203,7 @@ async function generateProductWiseReport(filters, userContext) {
       if (primaryClient) {
         clientName = primaryClient.company_name || `${primaryClient.first_names || ''} ${primaryClient.last_name || ''}`.trim();
         clientId = primaryClient.client_id;
-      } else if (orderCreator?.role?.name === 'CLIENT') {
+      } else if (orderCreator?.role?.name === 'CLIENT' || orderCreator?.role?.name === 'CLIENT_PHARMACIST') {
         clientName = `${orderCreator.first_name || ''} ${orderCreator.last_name || ''}`.trim();
         clientId = orderCreator.id;
       }
@@ -1374,7 +1374,7 @@ async function generateCardexReport(filters, userContext) {
 
     // Role-based access control for entry orders
     let clientFilter = {};
-    if (userContext.userRole === 'CLIENT') {
+    if (userContext.userRole === 'CLIENT' || userContext.userRole === 'CLIENT_PHARMACIST') {
       if (userContext.client_id) {
         clientFilter = {
           client_id: userContext.client_id,
@@ -1570,7 +1570,7 @@ async function generateCardexReport(filters, userContext) {
         if (primaryClient) {
           clientName = primaryClient.company_name || `${primaryClient.first_names || ''} ${primaryClient.last_name || ''}`.trim();
           clientId = primaryClient.client_id;
-        } else if (orderCreator?.role?.name === 'CLIENT') {
+        } else if (orderCreator?.role?.name === 'CLIENT' || orderCreator?.role?.name === 'CLIENT_PHARMACIST') {
           clientName = `${orderCreator.first_name || ''} ${orderCreator.last_name || ''}`.trim();
           clientId = orderCreator.id;
         }

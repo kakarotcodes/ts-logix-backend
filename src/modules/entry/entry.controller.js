@@ -591,8 +591,8 @@ async function getEntryFormFields(req, res) {
       success: true,
       data: data,
       user_role: { name: userRole },
-      filtered_for_client: userRole === "CLIENT",
-      ...(userRole === "CLIENT" && {
+      filtered_for_client: userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST",
+      ...((userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") && {
         message: "Form fields filtered for your assigned products and suppliers"
       })
     });
@@ -637,7 +637,7 @@ async function getEntryOrderByNo(req, res) {
 
     const filterOrg = (userRole === "ADMIN" || userRole === "WAREHOUSE_INCHARGE") ? null : organisationId;
     // ✅ Pass client_id for CLIENT users instead of user_id
-    const clientId = userRole === "CLIENT" ? req.user?.client_id : null;
+    const clientId = (userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") ? req.user?.client_id : null;
     const entryOrder = await entryService.getEntryOrderByNo(orderNo, filterOrg, userRole, clientId);
 
     if (!entryOrder) {

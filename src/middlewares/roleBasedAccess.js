@@ -210,7 +210,7 @@ function checkResourceAccess(resourceType) {
       }
 
       // Client - check ownership
-      if (userRole.name === 'CLIENT' && userRole.selfRestricted) {
+      if ((userRole.name === 'CLIENT' || userRole.name === 'CLIENT_PHARMACIST') && userRole.selfRestricted) {
         const resourceId = req.params.id || req.params.entry_order_id;
         
         if (resourceType === 'entry_orders' && resourceId) {
@@ -263,7 +263,7 @@ async function filterDataByRole(data, userRole, resourceType) {
     }
   }
 
-  if (userRole.name === 'CLIENT' && userRole.selfRestricted) {
+  if ((userRole.name === 'CLIENT' || userRole.name === 'CLIENT_PHARMACIST') && userRole.selfRestricted) {
     // Filter by ownership
     return data.filter(item => item.created_by === userRole.userId);
   }
@@ -317,8 +317,8 @@ async function checkClientRestriction(req, res, next) {
   try {
     const user = req.user;
 
-    // Only apply to PHARMACIST role
-    if (!user || user.role !== 'PHARMACIST') {
+    // Only apply to PHARMACIST and CLIENT_PHARMACIST roles
+    if (!user || (user.role !== 'PHARMACIST' && user.role !== 'CLIENT_PHARMACIST')) {
       req.clientRestriction = {
         isClientRestricted: false,
         client_id: null,

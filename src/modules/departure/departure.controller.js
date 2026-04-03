@@ -62,13 +62,13 @@ async function getProductsWithInventory(req, res) {
     
     return res.status(200).json({ 
       success: true,
-      message: userRole === "CLIENT" 
+      message: userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST" 
         ? "Products assigned to your client account with inventory fetched successfully"
         : "Products with inventory fetched successfully", 
       count: data.length,
       data,
       user_role: userRole,
-      filtered_by_client_assignments: userRole === "CLIENT"
+      filtered_by_client_assignments: userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST"
     });
   } catch (error) {
     return res.status(500).json({ 
@@ -104,13 +104,13 @@ async function getAvailableCellsForProduct(req, res) {
     
     return res.status(200).json({ 
       success: true,
-      message: userRole === "CLIENT" 
+      message: userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST" 
         ? "Available inventory in your assigned cells fetched successfully"
         : "Available cells fetched successfully", 
       count: data.length,
       data,
       user_role: userRole,
-      filtered_by_client_assignments: userRole === "CLIENT"
+      filtered_by_client_assignments: userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST"
     });
   } catch (error) {
     return res.status(500).json({ 
@@ -1356,7 +1356,7 @@ async function createComprehensiveDepartureOrder(req, res) {
     }
 
     // ✅ Special handling for CLIENT role - validate client_id matches authenticated user
-    if (userRole === 'CLIENT') {
+    if (userRole === 'CLIENT' || userRole === 'CLIENT_PHARMACIST') {
       try {
         // Get the client associated with this authenticated user from JWT
         const clientIdFromToken = req.user?.client_id;
@@ -2480,13 +2480,13 @@ async function getApprovedDepartureOrdersForDispatch(req, res) {
     
     return res.status(200).json({ 
       success: true,
-      message: userRole === "CLIENT" 
+      message: userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST" 
         ? "Approved departure orders for your dispatch fetched successfully"
         : "Approved departure orders for dispatch fetched successfully", 
       count: data.length,
       data,
       user_role: userRole,
-      filtered_by_client: userRole === "CLIENT",
+      filtered_by_client: userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST",
       warehouse_filter: warehouseId || "ALL_WAREHOUSES",
       organisation_filter: organisation_id || "ALL_ORGANISATIONS",
       dispatch_flow: "APPROVED_ORDER_DISPATCH",
@@ -2740,13 +2740,13 @@ async function getWarehouseDispatchSummary(req, res) {
     
     return res.status(200).json({ 
       success: true,
-      message: userRole === "CLIENT" 
+      message: userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST" 
         ? "Warehouse dispatch summary for your assigned products fetched successfully"
         : "Warehouse dispatch summary fetched successfully", 
       count: data.length,
       data,
       user_role: userRole,
-      filtered_by_client_assignments: userRole === "CLIENT",
+      filtered_by_client_assignments: userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST",
       summary: {
         total_warehouses: data.length,
         total_quantity: data.reduce((sum, w) => sum + w.total_quantity, 0),

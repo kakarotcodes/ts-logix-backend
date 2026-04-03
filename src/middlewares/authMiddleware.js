@@ -25,6 +25,15 @@ function authenticateToken(req, res, next) {
     }
 
     req.user = user; // ✅ Attach decoded user data to request
+
+    // ✅ Set up client restriction for CLIENT and CLIENT_PHARMACIST users
+    if ((user.role === 'CLIENT' || user.role === 'CLIENT_PHARMACIST') && user.client_id) {
+      req.clientRestriction = {
+        isClientRestricted: true,
+        client_id: user.client_id
+      };
+    }
+
     next(); // ✅ Proceed to the next middleware or controller
   });
 }

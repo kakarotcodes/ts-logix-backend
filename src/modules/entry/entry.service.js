@@ -183,7 +183,7 @@ async function getAllEntryOrders(
     whereConds.order = { organisation_id: organisationId };
   }
   // CLIENT-specific filtering - updated for multi-user support
-  if (userRole === "CLIENT") {
+  if (userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") {
     if (filters.client_id) {
       whereConds.client_id = filters.client_id;
 
@@ -366,7 +366,7 @@ async function getEntryFormFields(userRole = null, userId = null) {
   let suppliersPromise;
   let usersPromise;
 
-  if (userRole === "CLIENT" && userId) {
+  if ((userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") && userId) {
     // For CLIENT users, get only assigned products, suppliers, and client users
     
     // ✅ FIXED: Get client record for this user using the correct relation
@@ -790,7 +790,7 @@ async function getEntryOrderByNo(orderNo, organisationId = null, userRole = null
   }
 
   // ✅ CLIENT-specific filtering - all users under same client can see all client orders
-  if (userRole === "CLIENT" && clientId) {
+  if ((userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") && clientId) {
     where.client_id = clientId;
   }
 
@@ -1177,7 +1177,7 @@ async function getEntryOrdersByStatus(reviewStatus, organisationId = null, userR
   }
   
   // ✅ NEW: CLIENT-specific filtering - clients can only see their own entry orders
-  if (userRole === "CLIENT" && userId) {
+  if ((userRole === "CLIENT" || userRole === "CLIENT_PHARMACIST") && userId) {
     where.created_by = userId;
   }
 

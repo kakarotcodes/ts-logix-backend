@@ -7,10 +7,10 @@ async function getApprovedEntryOrdersForInventory(req, res) {
     const userRole = req.user?.role;
     const organisationId = req.user?.organisation_id;
 
-    // Only warehouse, admin, and pharmacist can access
+    // Only warehouse, admin, and pharmacist can access (not CLIENT_PHARMACIST - they are read-only)
     if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN" && userRole !== "PHARMACIST") {
-      return res.status(403).json({ 
-        message: "Access denied. Only warehouse staff and pharmacists can access inventory assignment." 
+      return res.status(403).json({
+        message: "Access denied. Only warehouse staff and pharmacists can access inventory assignment."
       });
     }
 
@@ -37,10 +37,10 @@ async function getEntryOrderProductsForInventory(req, res) {
     const { entryOrderId } = req.params;
     const userRole = req.user?.role;
 
-    // Only warehouse, admin, and pharmacist can access
+    // Only warehouse, admin, and pharmacist can access (not CLIENT_PHARMACIST - they are read-only)
     if (userRole !== "WAREHOUSE_INCHARGE" && userRole !== "ADMIN" && userRole !== "PHARMACIST") {
-      return res.status(403).json({ 
-        message: "Access denied. Only warehouse staff and pharmacists can access inventory assignment." 
+      return res.status(403).json({
+        message: "Access denied. Only warehouse staff and pharmacists can access inventory assignment."
       });
     }
 
@@ -83,7 +83,7 @@ async function assignProductToCell(req, res) {
     const userRole = req.user?.role;
     const userId = req.user?.id;
 
-    // ✅ UPDATED: Only warehouse staff can do inventory allocation (CLIENT users cannot)
+    // ✅ UPDATED: Only warehouse staff can do inventory allocation (CLIENT and CLIENT_PHARMACIST users cannot)
     if (!["WAREHOUSE_INCHARGE", "ADMIN", "PHARMACIST"].includes(userRole)) {
       // ✅ LOG: Access denied for inventory allocation
       await req.logEvent(
@@ -427,8 +427,12 @@ async function getInventoryMovementLogs(req, res) {
   try {
     const userRole = req.user?.role;
 
+    console.log('🔍 CONTROLLER - User Role:', userRole);
+    console.log('🔍 CONTROLLER - req.user:', JSON.stringify(req.user, null, 2));
+    console.log('🔍 CONTROLLER - req.clientRestriction:', JSON.stringify(req.clientRestriction, null, 2));
+
     // Only admin, warehouse staff, and pharmacists can view movement logs
-    if (!["WAREHOUSE_INCHARGE", "ADMIN", "PHARMACIST"].includes(userRole)) {
+    if (!["WAREHOUSE_INCHARGE", "ADMIN", "PHARMACIST", "CLIENT_PHARMACIST"].includes(userRole)) {
       return res.status(403).json({
         success: false,
         message: "Access denied. Only warehouse staff, admin, and pharmacists can view inventory movement logs."
@@ -1081,7 +1085,7 @@ async function getCellsByQualityStatus(req, res) {
       // Get entry order to determine creator's role
       const entryOrderInfo = await inventoryService.getEntryOrderCreatorInfo(entry_order_id);
       
-      if (entryOrderInfo.creator_role === "CLIENT") {
+      if (entryOrderInfo.creator_role === "CLIENT" || role === "CLIENT_PHARMACIST") {
         // ✅ CLIENT entry order: Show only client-assigned cells
         cells = await inventoryService.getCellsByQualityStatusForClient(quality_status, warehouse_id, entryOrderInfo.creator_id);
         accessInfo.filtering_applied = true;

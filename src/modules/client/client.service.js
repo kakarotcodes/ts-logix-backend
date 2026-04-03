@@ -543,7 +543,7 @@ async function createClient(clientData, cellAssignmentData = {}) {
         const hashedPassword = await bcrypt.hash(userData.password, 10);
 
         // ✅ Determine role: CLIENT or PHARMACIST (default to CLIENT if not specified)
-        const roleName = userData.role && (userData.role === 'CLIENT' || userData.role === 'PHARMACIST')
+        const roleName = userData.role && (userData.role === 'CLIENT' || userData.role === 'CLIENT_PHARMACIST')
           ? userData.role
           : 'CLIENT';
 
